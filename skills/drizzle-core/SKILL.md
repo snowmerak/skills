@@ -1,187 +1,154 @@
 ---
 name: drizzle-core
-description: Drizzle ORM core concepts including architecture, supported databases, TypeScript integration, and basic setup. Use when learning Drizzle ORM fundamentals, choosing database drivers, or setting up initial configuration.
+description: Drizzle ORM core concepts including architecture, supported databases, TypeScript integration, and basic setup. Use when learning Drizzle fundamentals, choosing database drivers, or setting up initial configuration.
 license: MIT
 metadata:
   author: snowmerak
-  version: "1.0"
+  version: '1.0'
   framework: drizzle-orm
   category: core
 ---
 
-# Drizzle ORM Core Skills
-
-This skill covers the fundamental concepts of Drizzle ORM for building type-safe SQL applications.
+# Drizzle ORM Core - Architecture & Setup
 
 ## Overview
 
-Drizzle ORM is a TypeScript-first, lightweight, and fast Object Relational Mapper (ORM) that provides complete type safety with minimal runtime overhead. It uses a code-first approach where database schemas are defined in TypeScript code.
+Drizzle ORM은 TypeScript-first, 경량급의 타입 안전한 SQL 빌더입니다. 런타임 오버헤드가 최소화되어 다른 ORM 대비 빠르고 가벼우며, 코드-first 방식으로 스키마를 정의합니다.
 
-### Key Features
+---
 
-- **Type-safe**: Full TypeScript support with automatic type inference
-- **Lightweight**: Minimal runtime footprint compared to other ORMs
-- **Fast**: Direct SQL generation without heavy abstraction layers
-- **Driver agnostic**: Works with multiple database drivers
-- **Code-first**: Define schemas in TypeScript, not SQL files
+## SOP: Step-by-Step Procedures
 
-## Architecture
-
-```
-drizzle-orm (Core ORM Library)
-├── drizzle-orm/pg-core      # PostgreSQL column types
-├── drizzle-orm/mysql2       # MySQL column types  
-├── drizzle-orm/libsql       # SQLite column types
-└── drizzle-orm/node-postgres # Driver adapter
-
-drizzle-kit (Migration CLI)
-└── drizzle-kit              # Command-line tool for migrations
-```
-
-## Supported Databases
-
-| Database | Driver | Package |
-|----------|--------|---------|
-| PostgreSQL | node-postgres | `drizzle-orm/node-postgres` |
-| PostgreSQL | postgres.js | `drizzle-orm/postgres-js` |
-| MySQL | mysql2 | `drizzle-orm/mysql2` |
-| SQLite | libsql | `drizzle-orm/libsql` |
-| SQLite | better-sqlite3 | `drizzle-orm/better-sqlite3` |
-| Turso | @libsql/client | `drizzle-orm/libsql` |
-| Cloudflare D1 | d1-http | `drizzle-orm/d1` |
-| CockroachDB | node-postgres | `drizzle-orm/node-postgres` |
-| MSSQL | mssql | `drizzle-orm/mssql` |
-
-## Installation
-
-### Basic Setup
+### SOP-1: 설치 및 드라이버 선택
 
 ```bash
-# Install core library and database driver
-npm install drizzle-orm pg  # PostgreSQL example
-npm install -D drizzle-kit   # Migration tool (dev dependency)
+# 핵심 라이브러리 + DB 드라이버 (하나만 선택)
+npm install drizzle-orm pg              # PostgreSQL (node-postgres)
+npm install drizzle-orm mysql2          # MySQL
+npm install drizzle-orm better-sqlite3  # SQLite (동기식)
+
+# 개발 도구 — 마이그레이션 CLI
+npm install -D drizzle-kit
 ```
 
-### TypeScript Configuration
+**드라이버 선택 가이드:**
 
-```json
-{
-  "compilerOptions": {
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "esModuleInterop": true
-  }
-}
-```
+| DB | 드라이버 | 패키지 | 특징 |
+|----|---------|--------|------|
+| PostgreSQL | node-postgres | `drizzle-orm/node-postgres` | 가장 일반적, 비동기 |
+| PostgreSQL | postgres.js | `drizzle-orm/postgres-js` | 경량, 서버리스에 적합 |
+| MySQL | mysql2 | `drizzle-orm/mysql2` | MySQL 표준 드라이버 |
+| SQLite (Node) | better-sqlite3 | `drizzle-orm/better-sqlite3` | 동기식, 빠름 |
+| SQLite (Turso) | libsql | `drizzle-orm/libsql` | Edge/브라우저 지원 |
+| Cloudflare D1 | d1-http | `drizzle-orm/d1` | 서버리스 WASM 환경 |
 
-## Basic Setup Example
-
-### PostgreSQL with node-postgres
+### SOP-2: PostgreSQL 연결 설정
 
 ```typescript
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 
-// Create connection pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  max: 20,                          // 최대 연결 수
+  idleTimeoutMillis: 30000,         // 유휴 연결 종료 시간
+  connectionTimeoutMillis: 2000,    // 연결 대기 시간
 });
 
-// Initialize Drizzle ORM
-const db = drizzle(pool);
+const db = drizzle(pool);           // Drizzle 인스턴스 생성
 
-// Use the database instance
+// 쿼리 실행 예시
 const users = await db.select().from(usersTable);
 ```
 
-### MySQL with mysql2
+### SOP-3: TypeScript 설정 (권장)
 
-```typescript
-import { drizzle } from 'drizzle-orm/mysql2';
-import { createPool } from 'mysql2/promise';
-
-const pool = createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-});
-
-const db = drizzle(pool);
+```json
+{
+  "compilerOptions": {
+    "strict": true,                 // 필수 — 타입 안전성의 핵심
+    "noUncheckedIndexedAccess": true,  // undefined 체크 강화
+    "esModuleInterop": true
+  }
+}
 ```
 
-### SQLite with libsql
+**`strict: true`가 없으면 Drizzle의 타입 추론이 무력화됩니다.** 반드시 활성화하세요.
 
-```typescript
-import { drizzle } from 'drizzle-orm/libsql';
-import { createClient } from '@libsql/client';
+### SOP-4: 기본 아키텍처 구조
 
-const client = createClient({
-  url: "file:local.db",
-});
-
-const db = drizzle(client);
+```
+src/
+├── schema/
+│   ├── index.ts          # 모든 테이블 export 통합
+│   ├── users.ts          # pgTable('users', {...})
+│   └── posts.ts          # pgTable('posts', {...})
+├── db/
+│   └── index.ts          # drizzle(pool) 인스턴스 생성 + export
+├── services/
+│   └── users.service.ts  # Drizzle 쿼리 사용
+└── main.ts               # 진입점
 ```
 
-## Core Concepts
-
-### Schema Definition
-
-Drizzle uses a code-first approach where you define your database schema in TypeScript:
-
+**db/index.ts:**
 ```typescript
-import { pgTable, serial, varchar, text, timestamp } from 'drizzle-orm/pg-core';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
 
-export const users = pgTable('users', {
-  id: serial('id').primaryKey(),
-  name: varchar('name', { length: 255 }).notNull(),
-  email: varchar('email', { length: 255 }).unique().notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
+export const db = drizzle(pool);
 ```
 
-### Query Builder
-
-Drizzle provides a type-safe query builder that generates SQL queries:
-
+**schema/index.ts:**
 ```typescript
-import { eq, and, or } from 'drizzle-orm';
-
-// Select all users
-const allUsers = await db.select().from(users);
-
-// Filter by condition
-const activeUsers = await db.select()
-  .from(users)
-  .where(and(
-    eq(users.isActive, true),
-    gt(users.createdAt, new Date('2024-01-01'))
-  ));
+export * from './users';
+export * from './posts';
 ```
 
-### Type Inference
-
-Drizzle automatically infers TypeScript types from your schema:
+### SOP-5: 타입 추론 활용
 
 ```typescript
 import type { InferModel } from 'drizzle-orm';
+import { users } from './schema';
 
-// Automatically inferred types
-type User = InferModel<typeof users>; // Full user object type
-type UserInsert = InferModel<typeof users, 'insert'>; // Insert-only type
-type UserSelect = InferModel<typeof users, 'select'>; // Select-only type
+// 테이블에서 자동 추론된 타입
+type User = InferModel<typeof users>;           // SELECT 결과 전체
+type UserInsert = InferModel<typeof users, 'insert'>;  // INSERT 시 허용 필드
+type UserSelect = InferModel<typeof users, 'select'>;  // SELECT 반환 필드
+
+// 실제 사용 — DTO와 통합
+function createUser(dto: UserInsert): Promise<User> { /* ... */ }
 ```
+
+---
+
+## Tool Integration
+
+| 작업 | 도구 | 예시 |
+|------|------|------|
+| 스키마 파일 탐색 | `search_files` | `search_files("pgTable", "*.ts")` |
+| DB 연결 설정 확인 | `read_file` | `.env`, `db/index.ts` 읽기 |
+| 마이그레이션 실행 | `run_command` | `npx drizzle-kit generate && npx drizzle-kit migrate` |
+
+---
+
+## Anti-Patterns & Guardrails
+
+- ❌ **TypeScript `strict: false`에서 Drizzle 사용 금지** — 타입 추론이 무력화되어 장점 반감
+- ❌ **매 쿼리마다 새로운 Pool 생성 금지** — 싱글톤 Pool을 재사용하세요. 연결 오버헤드가 치명적
+- ❌ **프로덕션에서 `synchronize: true` 같은 자동 동기화 패턴 사용 금지** — Drizzle은 마이그레이션(`drizzle-kit migrate`)만 권장
+- ⚠️ **Drizzle은 ORM이 아닙니다.** SQL 빌더입니다. 복잡한 비즈니스 로직(연관 관계 자동 로드 등)은 직접 구현해야 함
 
 ## Best Practices
 
-1. **Use strict TypeScript**: Enable `strict` and `noUncheckedIndexedAccess` in tsconfig.json
-2. **Define schemas separately**: Keep schema definitions in dedicated files
-3. **Use migrations**: Always use drizzle-kit for database changes
-4. **Type safety**: Leverage TypeScript types throughout your application
-5. **Connection pooling**: Use connection pools for production databases
+1. `strict: true` TypeScript 설정 필수
+2. Pool을 싱글톤으로 관리 (DB 연결 재사용)
+3. 스키마 파일을 도메인별로 분리 (`schema/users.ts`, `schema/posts.ts`)
+4. `InferModel`로 타입 자동 추론 활용 — 수동 타입 정의 금지
+5. 마이그레이션은 항상 `drizzle-kit generate → migrate` 워크플로우 사용
 
 ## References
 
-- [Drizzle ORM Documentation](https://orm.drizzle.team)
+- [Drizzle ORM Documentation](https://orm.drizzle.team/docs/overview)
 - [GitHub Repository](https://github.com/drizzle-team/drizzle-orm)
-- [Drizzle Kit Documentation](https://orm.drizzle.team/docs/kit-overview)
+- [Drizzle Kit Docs](https://orm.drizzle.team/docs/kit-overview)

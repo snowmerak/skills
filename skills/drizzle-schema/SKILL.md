@@ -4,139 +4,79 @@ description: Drizzle ORM schema definition including table creation, column type
 license: MIT
 metadata:
   author: snowmerak
-  version: "1.0"
+  version: '1.0'
   framework: drizzle-orm
   category: schema
 ---
 
-# Drizzle Schema Definition Skills
+# Drizzle Schema Definition - Tables, Columns & Constraints
 
-This skill covers comprehensive schema definition patterns in Drizzle ORM including tables, columns, constraints, and indexes.
+## Overview
 
-## Table Definitions
+Drizzle는 코드-first 방식으로 TypeScript로 데이터베이스 스키마를 정의합니다. PostgreSQL(`pg-core`), MySQL(`mysql2`), SQLite(`libsql`) 등 DB마다 전용 모듈이 제공되며, 컬럼 타입과 제약 조건을 체이닝으로 설정합니다.
 
-### PostgreSQL Tables
+> 💡 **참고:** 상세한 컬럼 타입 예시와 복잡한 관계 패턴은 `references/schema-examples.md`를 참조하세요. 여기서는 핵심 패턴만 다룹니다.
+
+---
+
+## SOP: Step-by-Step Procedures
+
+### SOP-1: PostgreSQL 테이블 정의
 
 ```typescript
-import { 
-  pgTable, 
-  serial, 
-  varchar, 
-  text, 
-  timestamp, 
-  boolean, 
-  integer,
-  uuid,
-  jsonb,
-  date,
-  time,
-  interval,
-  numeric,
-  real,
-  doublePrecision,
-  smallint,
-  bigint,
-  char,
-  cidr,
-  inet,
-  macaddr,
-  money,
-  oid,
-  tsvector,
-  timestamptz,
-  interval as pgInterval,
-  bytea,                          // Binary data (files, images)
-  bigserial,                      // 8-byte auto-increment
-  smallserial,                    // 2-byte auto-increment
-} from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, text, timestamp, boolean, integer, uuid, jsonb } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
-  // Primary keys
-  id: serial('id').primaryKey(),           // AUTO_INCREMENT equivalent (4-byte)
-  uuidId: uuid('uuid_id').defaultRandom().primaryKey(),
-  
+  // Primary Key — auto-increment (4-byte)
+  id: serial('id').primaryKey(),
+
+  // UUID PK (random 생성)
+  // uuidId: uuid('uuid_id').defaultRandom().primaryKey(),
+
   // String types
   name: varchar('name', { length: 255 }).notNull(),
   email: varchar('email', { length: 255 }).unique().notNull(),
-  slug: char('slug', { length: 100 }),     // Fixed-length string
-  
-  // Text types
-  bio: text('bio'),                         // Unlimited length
-  content: text('content').default(''),    // With default value
-  
-  // Text with enum for type inference (runtime check NOT performed)
+
+  // Enum-like (text + enum 옵션 — 런타임 체크 없음!)
   role: text('role', { enum: ['admin', 'user', 'moderator'] }),
-  
-  // Numeric types
-  age: integer('age'),                      // 4 bytes (-2B to +2B)
-  smallAge: smallint('small_age'),          // 2 bytes (-32K to +32K)
-  bigAge: bigint('big_age'),                // 8 bytes (huge range)
-  price: numeric('price', { precision: 10, scale: 2 }), // Decimal
-  
-  // BigInt with mode option for large auto-increment IDs
-  bigId: bigserial('big_id', { mode: 'number' }), // Returns number instead of bigint
-  
-  // Small serial (2-byte auto-increment)
-  smallId: smallserial('small_id'),
-  
-  // Boolean types
+
+  // Boolean with default
   isActive: boolean('is_active').default(true).notNull(),
-  
+
   // Timestamps
-  createdAt: timestamp('created_at')
-    .defaultNow()
-    .notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at')
     .$onUpdate(() => new Date())
     .notNull(),
-  publishedAt: timestamptz('published_at'), // With timezone
-  
-  // Binary data (e.g., files, images)
-  avatar: bytea('avatar'),
-  
-  // Other types
+
+  // JSONB (반드시 $type 단언 필요)
   metadata: jsonb('metadata').$type<Record<string, unknown>>(),
-  tags: text('tags').array(),               // Array type
+
+  // Array type
+  tags: text('tags').array(),
 });
 ```
 
-### MySQL Tables
+### SOP-2: MySQL 테이블 정의
 
 ```typescript
-import { 
-  mysqlTable, 
-  int, 
-  varchar, 
-  text, 
-  timestamp, 
-  boolean, 
-  date,
-  time,
-  decimal,
-  json,
-} from 'drizzle-orm/mysql2';
+import { mysqlTable, int, varchar, text, timestamp, boolean, decimal } from 'drizzle-orm/mysql2';
 
 export const products = mysqlTable('products', {
-  id: int('id').autoincrement().primaryKey(),
+  id: int('id').autoincrement().primaryKey(),   // auto-increment
   name: varchar('name', { length: 255 }).notNull(),
   description: text('description'),
   price: decimal('price', { precision: 10, scale: 2 }),
   stock: int('stock').default(0).notNull(),
   isActive: boolean('is_active').default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  metadata: json('metadata'),
 });
 ```
 
-### SQLite Tables
+### SOP-3: SQLite 테이블 정의
 
 ```typescript
-import { 
-  sqliteTable, 
-  integer, 
-  text, 
-  real,
-} from 'drizzle-orm/libsql';
+import { sqliteTable, integer, text } from 'drizzle-orm/libsql';
 
 export const tasks = sqliteTable('tasks', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -144,327 +84,106 @@ export const tasks = sqliteTable('tasks', {
   description: text('description'),
   status: text('status', { enum: ['pending', 'in_progress', 'completed'] }),
   priority: integer('priority').default(1),
-  dueDate: text('due_date', { mode: 'date' }), // ISO format date string
+  dueDate: text('due_date', { mode: 'date' }),   // ISO 문자열 → Date 자동 변환
 });
 ```
 
-## Column Types and Options
-
-### Primary Keys
+### SOP-4: 제약 조건 & 인덱스
 
 ```typescript
-// Auto-incrementing primary key (4-byte)
-id: serial('id').primaryKey();
+import { pgTable, serial, varchar, timestamp } from 'drizzle-orm/pg-core';
+import { index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core';
 
-// Auto-incrementing primary key (2-byte)
-smallId: smallserial('small_id').primaryKey();
-
-// Auto-incrementing primary key (8-byte)
-bigId: bigserial('big_id').primaryKey();
-
-// BigInt with mode option for large auto-increment IDs
-// mode: 'number' returns JavaScript number (up to 2^53)
-// mode: 'bigint' returns native bigint
-bigIdNumber: bigserial('big_id', { mode: 'number' }).primaryKey();
-
-// UUID primary key with default random value
-uuidId: uuid('uuid_id').defaultRandom().primaryKey();
-
-// Composite primary key (defined in table options)
-export const postTags = sqliteTable('post_tags', {
-  postId: integer('post_id'),
-  tagId: integer('tag_id'),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.postId, table.tagId] }),
-}));
-```
-
-### Identity Columns (PostgreSQL)
-
-Identity columns are the SQL standard replacement for SERIAL types:
-
-```typescript
-import { pgTable, integer } from 'drizzle-orm/pg-core';
-
-// Traditional SERIAL (still supported)
-export const users1 = pgTable('users1', {
-  id: serial('id').primaryKey(),
-});
-
-// Identity column with GENERATED ALWAYS (cannot be overridden)
-export const users2 = pgTable('users2', {
-  id: integer('id').generatedAlwaysAsIdentity().primaryKey(),
-});
-
-// Identity column with GENERATED BY DEFAULT (can be overridden)
-export const users3 = pgTable('users3', {
-  id: integer('id').generatedByDefaultAsIdentity().primaryKey(),
-});
-
-// Identity column with custom start and increment
-export const users4 = pgTable('users4', {
-  id: integer('id').generatedAlwaysAsIdentity({ 
-    startWith: 1000,  // Start from 1000
-    increment: 5      // Increment by 5
-  }).primaryKey(),
-});
-```
-
-> **Note**: Identity columns are the recommended approach for new PostgreSQL tables. They follow SQL standards and provide more control than SERIAL types.
-
-### Constraints
-
-```typescript
-// NOT NULL constraint
-name: varchar('name', { length: 255 }).notNull();
-
-// UNIQUE constraint
-email: varchar('email', { length: 255 }).unique().notNull();
-
-// DEFAULT value
-status: varchar('status').default('active');
-createdAt: timestamp('created_at').defaultNow().notNull();
-
-// CHECK constraints (PostgreSQL)
-age: integer('age').check((age) => age >= 0);
-
-// REFERENCES / FOREIGN KEY
-authorId: integer('author_id')
-  .references(() => users.id, { onDelete: 'cascade' });
-
-// ON UPDATE actions (PostgreSQL)
-authorId2: integer('author_id')
-  .references(() => users.id, { 
-    onDelete: 'cascade',
-    onUpdate: 'cascade' 
-  });
-```
-
-### Array Types
-
-```typescript
-// PostgreSQL arrays
-tags: text('tags').array();                    // TEXT[]
-categories: varchar('categories', { length: 50 }).array(); // VARCHAR(50)[]
-
-// MySQL JSON array (stored as JSON)
-tags: json('tags');                            // JSON type
-
-// SQLite (store as JSON string or use separate table)
-tags: text('tags').$type<string[]>();         // Type hint for arrays
-```
-
-### Enum-like Types
-
-```typescript
-// PostgreSQL enum type (creates actual ENUM in database)
-export const userStatus = pgEnum('user_status', [
-  'active',
-  'inactive',
-  'suspended',
-]);
-
-export const users = pgTable('users', {
-  id: serial('id').primaryKey(),
-  status: userStatus().default('active'),
-});
-
-// MySQL enum type (varchar with enum for type inference)
-export const products = mysqlTable('products', {
-  status: varchar('status', { 
-    enum: ['draft', 'published', 'archived'] 
-  }),
-});
-
-// SQLite enum type (text with enum for type inference)
-export const tasks = sqliteTable('tasks', {
-  status: text('status', { enum: ['pending', 'in_progress', 'completed'] }),
-});
-
-// Text with enum for type inference (runtime check NOT performed)
-// Use this when you want TypeScript type safety without creating a database ENUM
-export const roles = pgTable('roles', {
-  id: serial('id').primaryKey(),
-  name: text('name', { enum: ['admin', 'user', 'moderator'] }).notNull(),
-});
-```
-
-> **Important**: The `enum` option in varchar/text columns only provides TypeScript type inference. It does NOT enforce the enum values at the database level or runtime. Use `pgEnum` for actual database ENUM types.
-
-## Indexes
-
-### Automatic Indexing
-
-- Primary keys are automatically indexed
-- UNIQUE columns are automatically indexed
-
-### Manual Index Creation
-
-```typescript
-import { index, sql } from 'drizzle-orm';
-
-export const users = pgTable('users', {
-  id: serial('id').primaryKey(),
-  name: varchar('name', { length: 255 }).notNull(),
-  email: varchar('email', { length: 255 }).unique().notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-}, (table) => ({
-  // Composite index
-  nameCreatedIdx: index('name_created_idx').on(table.name, table.createdAt),
-  
-  // Expression index (PostgreSQL)
-  emailLowerIdx: index('email_lower_idx').on(sql`lower(${table.email})`),
-}));
-
-// Or using separate index definition
-export const usersEmailIndex = index('users_email_idx').on(users.email);
-```
-
-### Index Types
-
-```typescript
-// B-tree (default)
-index('idx_name').on(table.name);
-
-// Hash index
-index('idx_name_hash', { type: 'hash' }).on(table.name);
-
-// GIN index for JSON/arrays (PostgreSQL)
-index('idx_metadata_gin', { type: 'gin' }).on(table.metadata);
-
-// GiST index for geospatial data
-index('idx_location_gist', { type: 'gist' }).on(table.location);
-
-// SP-GiST index
-index('idx_name_spgist', { type: 'spgist' }).on(table.name);
-
-// BRIN index (for large tables with naturally ordered data)
-index('idx_created_brin', { type: 'brin' }).on(table.createdAt);
-```
-
-## Complete Schema Example
-
-### Blog Application Schema
-
-```typescript
-import { 
-  pgTable, 
-  serial, 
-  varchar, 
-  text, 
-  timestamp, 
-  boolean, 
-  integer,
-  jsonb,
-} from 'drizzle-orm/pg-core';
-
-// Users table
-export const users = pgTable('users', {
-  id: serial('id').primaryKey(),
-  name: varchar('name', { length: 255 }).notNull(),
-  email: varchar('email', { length: 255 }).unique().notNull(),
-  passwordHash: varchar('password_hash', { length: 255 }).notNull(),
-  role: varchar('role', { length: 50 }).default('user').notNull(),
-  isActive: boolean('is_active').default(true).notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').$onUpdate(() => new Date()).notNull(),
-});
-
-// Posts table
 export const posts = pgTable('posts', {
   id: serial('id').primaryKey(),
-  title: varchar('title', { length: 255 }).notNull(),
-  slug: varchar('slug', { length: 255 }).unique().notNull(),
-  content: text('content'),
-  excerpt: text('excerpt'),
-  published: boolean('published').default(false).notNull(),
-  authorId: integer('author_id')
-    .references(() => users.id, { onDelete: 'cascade' })
-    .notNull(),
-  views: integer('views').default(0).notNull(),
+  title: varchar('title', { length: 200 }).notNull(),
+  slug: varchar('slug', { length: 255 }).unique().notNull(),   // ← unique 제약
+  authorId: integer('author_id').references(() => users.id).notNull(),  // ← 외래 키
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').$onUpdate(() => new Date()).notNull(),
-});
+}, (table) => ({
+  // 복합 인덱스
+  idxAuthorCreated: index('posts_author_created_idx')
+    .on(table.authorId, table.createdAt),
 
-// Comments table
-export const comments = pgTable('comments', {
+  // 복합 기본키
+  // pk: primaryKey({ columns: [table.userId, table.postId] }),
+}));
+```
+
+### SOP-5: 외래 키 관계 정의
+
+**1:N (User → Posts):**
+```typescript
+// posts 테이블에서 authorId를 users.id에 연결
+export const posts = pgTable('posts', {
   id: serial('id').primaryKey(),
-  content: text('content').notNull(),
-  postId: integer('post_id')
-    .references(() => posts.id, { onDelete: 'cascade' })
-    .notNull(),
+  title: varchar('title', { length: 200 }).notNull(),
   authorId: integer('author_id')
-    .references(() => users.id, { onDelete: 'cascade' })
+    .references(() => users.id, { onDelete: 'cascade' })  // ← 삭제 시 연동
     .notNull(),
-  parentId: integer('parent_id').references(() => comments.id, { onDelete: 'cascade' }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
-// Tags table
-export const tags = pgTable('tags', {
-  id: serial('id').primaryKey(),
-  name: varchar('name', { length: 100 }).unique().notNull(),
-  slug: varchar('slug', { length: 100 }).unique().notNull(),
-});
+// 쿼리에서 조인 (drizzle-queries 스킬 참조)
+const userPosts = await db.select()
+  .from(users)
+  .innerJoin(posts, eq(users.id, posts.authorId));
+```
 
-// Post-Tag junction table (Many-to-Many)
+**N:M (Post ↔ Tags):**
+```typescript
 export const postTags = pgTable('post_tags', {
-  postId: integer('post_id')
-    .references(() => posts.id, { onDelete: 'cascade' }),
-  tagId: integer('tag_id')
-    .references(() => tags.id, { onDelete: 'cascade' }),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.postId, table.tagId] }),
+  postId: integer('post_id').references(() => posts.id, { onDelete: 'cascade' }),
+  tagId: integer('tag_id').references(() => tags.id, { onDelete: 'cascade' }),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.postId, t.tagId] }),  // 복합 PK
 }));
-
-// Indexes
-export const users = pgTable('users', {
-  id: serial('id').primaryKey(),
-  name: varchar('name', { length: 255 }).notNull(),
-  email: varchar('email', { length: 255 }).unique().notNull(),
-}, (table) => ({
-  emailIdx: index('users_email_idx').on(table.email),
-}));
-
-export const posts = pgTable('posts', {
-  id: serial('id').primaryKey(),
-  title: varchar('title', { length: 255 }).notNull(),
-  slug: varchar('slug', { length: 255 }).unique().notNull(),
-  authorId: integer('author_id')
-    .references(() => users.id, { onDelete: 'cascade' })
-    .notNull(),
-  published: boolean('published').default(false).notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-}, (table) => ({
-  authorIdx: index('posts_author_idx').on(table.authorId),
-  publishedIdx: index('posts_published_idx').on(table.published),
-  slugIdx: index('posts_slug_idx').on(table.slug),
-}));
-
-// Export schema type
-export type Schema = {
-  users: typeof users;
-  posts: typeof posts;
-  comments: typeof comments;
-  tags: typeof tags;
-  postTags: typeof postTags;
-};
 ```
+
+### SOP-6: 타입 추론
+
+```typescript
+import type { InferModel } from 'drizzle-orm';
+
+// 전체 User 객체 타입 (SELECT 결과)
+type User = InferModel<typeof users>;
+
+// INSERT 시 사용할 수 있는 필드 타입 (id, createdAt 제외)
+type UserInsert = InferModel<typeof users, 'insert'>;
+
+// SELECT 시 반환되는 필드 타입
+type UserSelect = InferModel<typeof users, 'select'>;
+```
+
+---
+
+## Tool Integration
+
+| 작업 | 도구 | 예시 |
+|------|------|------|
+| 스키마 파일 탐색 | `search_files` | `search_files("pgTable", "*.ts")` |
+| 컬럼 타입 확인 | `read_file` | `schema.ts`에서 컬럼 정의 읽기 |
+| 마이그레이션 생성 | `run_command` | `npx drizzle-kit generate` |
+
+---
+
+## Anti-Patterns & Guardrails
+
+- ❌ **`text({enum})`은 런타임 체크가 아닙니다.** class-validator나 애플리케이션 레벨 검증과 함께 사용하세요. Drizzle은 타입 추론만 제공
+- ❌ **`.unique()`는 컬럼 전체에 하나만 허용합니다.** 중복을 원하면 인덱스(`index()`)를 사용하세요
+- ❌ **`$onUpdate()`는 DB trigger가 아닙니다.** Drizzle이 SELECT 시 현재 시간을 반환할 뿐, 실제 DB 업데이트는 애플리케이션에서 처리해야 합니다. 자동 갱신하려면 DB trigger 또는 `updatedAt` 쿼리에서 명시적 설정 필요
+- ❌ **`jsonb.$type<>()`는 타입 단언일 뿐 런타임 검증이 아닙니다.** 잘못된 데이터가 들어오면 에러 없이 무시될 수 있음
+- ⚠️ **외래 키 제약 조건(`references()`)은 마이그레이션 시 실제 DB FK 생성** — 삭제/업데이트 정책(`onDelete`, `onUpdate`)을 반드시 명시하세요
 
 ## Best Practices
 
-1. **Use meaningful names**: Table and column names should be descriptive
-2. **Consistent naming**: Use snake_case for database columns, camelCase in TypeScript
-3. **Add indexes strategically**: Index frequently queried columns
-4. **Use constraints**: Leverage foreign keys, unique constraints, and check constraints
-5. **Version control schemas**: Keep schema files under version control
-6. **Document relationships**: Add comments explaining complex relationships
-7. **Use Identity columns in PostgreSQL**: Prefer `generatedAlwaysAsIdentity()` over SERIAL for new tables
-8. **Use pgEnum for strict enums**: When you need database-level enum enforcement, use `pgEnum`
-9. **Use text({ enum }) for type inference**: When you only need TypeScript safety without DB-level enforcement
+1. 컬럼명은 snake_case(DB), 프로퍼티명은 camelCase(TypeScript)로 분리
+2. 모든 NOT NULL 컬럼에 `.notNull()` 명시 (타입 안전성 확보)
+3. timestamp는 `defaultNow()` + `$onUpdate()` 조합으로 생성/수정 시간 자동화
+4. 외래 키는 `references(() => OtherTable.col)` 패턴 사용
+5. 인덱스는 자주 조회/필터링하는 컬럼에 추가 (특히 WHERE, JOIN 대상)
 
 ## References
 
-- [Drizzle Schema Declaration](https://orm.drizzle.team/docs/sql-schema-declaration)
-- [PostgreSQL Column Types](https://www.postgresql.org/docs/current/datatype.html)
-- [MySQL Column Types](https://dev.mysql.com/doc/refman/8.0/en/data-types.html)
+- [Drizzle Schema Docs](https://orm.drizzle.team/docs/table-def)
+- [Drizzle Column Types](https://orm.drizzle.team/docs/column-types/postgresql)
+- [Schema Examples Reference](./references/schema-examples.md)
