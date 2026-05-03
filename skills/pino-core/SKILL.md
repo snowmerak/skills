@@ -4,91 +4,60 @@ description: Pino core logging concepts including logger creation, log levels, c
 license: MIT
 metadata:
   author: snowmerak
-  version: "1.0"
-  framework: pino
+  version: '1.0'
   category: core
+  tags: [pino, logging, core, structured-logging]
 ---
 
-# Pino Core Logging Skills
+# Pino Core Logging
 
-This skill covers the fundamental concepts of Pino logging including logger creation, log levels, child loggers, and the complete logging API.
+This skill covers fundamental Pino concepts: logger creation, log levels, child loggers, bindings, and the complete logging API.
 
-## Installation
+## SOP: Step-by-Step Procedures
 
-```bash
-npm install pino
-```
+### SOP 1: Logger Creation
 
-For NestJS applications, use `nestjs-pino` instead (see drizzle-nestjs skill):
-
-```bash
-npm install nestjs-pino pino-http
-```
-
-## Logger Creation
-
-### Basic Logger
+**Basic Logger:**
 
 ```typescript
 import pino from 'pino';
 
-// Simple logger with default settings
 const logger = pino();
-
 logger.info('hello world');
 logger.error('something bad happened');
 ```
 
-### Logger with Options
+**Logger with Options:**
 
 ```typescript
-import pino from 'pino';
-
 const logger = pino({
-  level: 'info',           // Minimum log level
-  name: 'my-app',          // Logger name (appears in every log line)
+  level: 'info',       // Minimum log level
+  name: 'my-app',      // Logger name (appears in every log line)
 });
-
-logger.info('message with name');
-// Output: {"level":30,"time":"...","pid":...,"hostname":"...","name":"my-app","msg":"message with name"}
 ```
 
-### Logger with Custom Destination
+**Custom Destination:**
 
 ```typescript
-import pino from 'pino';
-
 // Write to file
-const logger = pino(pino.destination('./logs/app.log'));
-
-// Write to stdout (fd 1)
-const logger = pino(pino.destination(1));
-
-// Write to stderr (fd 2)
-const logger = pino(pino.destination(2));
+const logger1 = pino(pino.destination('./logs/app.log'));
 
 // Async buffered writing
-const logger = pino(pino.destination({
+const logger2 = pino(pino.destination({
   dest: './logs/app.log',
   minLength: 4096,    // Buffer size before flush
   sync: false,        // Asynchronous mode
 }));
 ```
 
-### Logger with Transport (v7+)
+**Transport (v7+):**
 
 ```typescript
-import pino from 'pino';
-
-// Single transport target
-const logger = pino({
-  transport: {
-    target: 'pino-pretty',  // Human-readable output for development
-  },
-});
+// Pretty print for development
+const logger1 = pino({ transport: { target: 'pino-pretty' } });
 
 // File transport
-const logger = pino({
+const logger2 = pino({
   transport: {
     target: 'pino/file',
     options: { destination: './logs/app.log' },
@@ -96,9 +65,9 @@ const logger = pino({
 });
 ```
 
-## Log Levels
+### SOP 2: Log Levels
 
-Pino defines 7 log levels with numeric values (lower number = more verbose):
+Pino defines 7 log levels (lower number = more verbose):
 
 | Level   | Value | Method              | Use Case                                    |
 |---------|-------|---------------------|---------------------------------------------|
@@ -110,25 +79,23 @@ Pino defines 7 log levels with numeric values (lower number = more verbose):
 | trace   | 10    | `logger.trace()`    | Detailed tracing of execution               |
 | silent  | 99    | -                   | Turn off all logging                        |
 
-### Usage Examples
+**Usage Examples:**
 
 ```typescript
-import pino from 'pino';
-
 const logger = pino({ level: 'info' });
 
 // Info level
 logger.info('Application started');
 logger.info({ userId: 123 }, 'User logged in');
 
-// Error level with Error object
+// Error with Error object
 try {
   await someOperation();
 } catch (err) {
   logger.error(err, 'Operation failed');
 }
 
-// Fatal level - application should exit after this
+// Fatal - application should exit after this
 try {
   criticalInit();
 } catch (err) {
@@ -136,74 +103,28 @@ try {
   process.exit(1);
 }
 
-// Debug level (only shown when level <= debug)
-logger.debug({ data: expensiveComputation() }, 'Debug info');
-
-// Silent - disables all logging
-const silentLogger = pino({ level: 'silent' });
-```
-
-### Dynamic Level Change at Runtime
-
-```typescript
-import pino from 'pino';
-
-const logger = pino({ level: 'info' });
-
-logger.info('This will be logged'); // Logged
-
-// Change level at runtime
-logger.level = 'debug';
-
-logger.debug('Now debug is enabled'); // Now logged
-
 // Check if level is enabled (for expensive operations)
 if (logger.isLevelEnabled('trace')) {
   logger.trace({ data: getExpensiveData() }, 'Trace info');
 }
 ```
 
-### Custom Log Levels
+**Dynamic Level Change at Runtime:**
 
 ```typescript
-import pino from 'pino';
+const logger = pino({ level: 'info' });
+logger.info('This will be logged'); // Logged
 
-const logger = pino({
-  customLevels: {
-    http: 35,      // Between info (30) and warn (40)
-    security: 25,  // Between debug (20) and info (30)
-  },
-});
-
-logger.http('HTTP request processed');
-logger.security({ userId: 123 }, 'Security check passed');
+// Change level at runtime
+logger.level = 'debug';
+logger.debug('Now debug is enabled'); // Now logged
 ```
 
-### Use Only Custom Levels
+### SOP 3: Logging API Methods
+
+All methods accept these signature patterns:
 
 ```typescript
-import pino from 'pino';
-
-const logger = pino({
-  customLevels: { foo: 35, bar: 25 },
-  useOnlyCustomLevels: true,
-  level: 'foo',
-});
-
-logger.foo('works');      // Works
-logger.bar('also works'); // Works
-// logger.info('throws error - info not available');
-```
-
-## Logger API Methods
-
-### Standard Logging Methods
-
-All methods accept the same signature patterns:
-
-```typescript
-import pino from 'pino';
-
 const logger = pino();
 
 // Pattern 1: (message)
@@ -222,13 +143,9 @@ logger.info('User %s logged in from %s', 'john', '192.168.1.1');
 logger.info({ userId: 123 }, 'User %s logged in', 'john');
 ```
 
-### Error Logging Best Practices
+**Error Logging Best Practices:**
 
 ```typescript
-import pino from 'pino';
-
-const logger = pino();
-
 // GOOD: Pass Error object as first argument for proper serialization
 try {
   await db.query();
@@ -239,77 +156,40 @@ try {
 // GOOD: Include context with error
 logger.error(
   { userId: 123, orderId: 456, operation: 'payment' },
-  new Error('Payment processing failed')
+  new Error('Payment processing failed'),
 );
 
 // BAD: Stringify error manually (loses stack trace)
 logger.error({ error: err.message });
-
-// GOOD: Use fatal for unrecoverable errors
-try {
-  initCriticalService();
-} catch (err) {
-  logger.fatal(err, 'Critical service failed - application cannot continue');
-  process.exit(1);
-}
 ```
 
-### Logger Instance Methods
+**Logger Instance Methods:**
 
 ```typescript
-import pino from 'pino';
-
 const logger = pino({ name: 'my-app' });
 
-// Get current bindings (pid, hostname, custom fields)
-const bindings = logger.bindings();
-console.log(bindings); // { pid: 12345, hostname: '...', name: 'my-app' }
+// Get current bindings
+const bindings = logger.bindings(); // { pid, hostname, name }
 
-// Add additional bindings dynamically
+// Add bindings dynamically
 logger.setBindings({ requestId: 'abc-123' });
 
-// Flush buffered logs (for async transports)
+// Flush buffered logs (async transports)
 await logger.flush();
 
 // Listen for level changes
 logger.on('level-change', (lvl, val, name) => {
   console.log(`Level changed to ${name} (${val})`);
 });
-
-// Access version
-console.log(logger.version); // '9.x.x'
 ```
 
-### Static Methods
-
-```typescript
-import pino from 'pino';
-
-// Create destination stream
-const dest = pino.destination('/path/to/file');
-const stdout = pino.destination(1);
-const stderr = pino.destination(2);
-
-// Create transport
-const transport = pino.transport({ target: 'pino-pretty' });
-
-// Standard serializers (for custom use)
-const serializedError = pino.stdSerializers.err(new Error('test'));
-// { type: 'Error', message: 'test', stack: '...' }
-
-// Standard time functions
-const isoTime = pino.stdTimeFunctions.isoTime(); // ISO 8601 timestamp string
-```
-
-## Child Loggers
+### SOP 4: Child Loggers
 
 Child loggers inherit parent bindings and allow adding context-specific fields.
 
-### Basic Child Logger
+**Basic Child Logger:**
 
 ```typescript
-import pino from 'pino';
-
 const logger = pino({ name: 'app' });
 
 // Create child with additional bindings
@@ -317,71 +197,35 @@ const userLogger = logger.child({ userId: 123, module: 'auth' });
 
 userLogger.info('User authenticated');
 // Output includes: {"userId":123,"module":"auth","name":"app",...}
-
-userLogger.debug('Checking permissions'); // Also includes child bindings
 ```
 
-### Nested Child Loggers
+**Nested Child Loggers:**
 
 ```typescript
-import pino from 'pino';
-
-const logger = pino();
-
-// Parent logger
 const requestLogger = logger.child({ requestId: 'abc-123' });
-
-// Child of child
 const userRequestLogger = requestLogger.child({ userId: 456, path: '/api/users' });
 
 userRequestLogger.info('Processing request');
 // Output includes: {"requestId":"abc-123","userId":456,"path":"/api/users",...}
 ```
 
-### Child Logger with Custom Methods
+**Removing Bindings from Child:**
 
 ```typescript
-import pino from 'pino';
-
-const logger = pino();
-
-// Create child with custom logging methods
-const httpLogger = logger.child({
-  module: 'http',
-}, {
-  http: function (...args) {
-    this.info(...args); // Map http level to info
-  },
-});
-
-httpLogger.http('Request received');
-```
-
-### Removing Bindings from Child
-
-```typescript
-import pino from 'pino';
-
 const logger = pino({ userId: 123 });
-
-// Child inherits userId
 const child = logger.child({ path: '/api/users' });
 child.info('request'); // Includes userId: 123, path: '/api/users'
 
-// Create grandchild that removes userId
+// Grandchild removes userId
 const grandChild = child.child({}, { remove: ['userId'] });
 grandChild.info('request'); // Only includes path: '/api/users', NOT userId
 ```
 
-## Logger Bindings
+### SOP 5: Logger Bindings
 
-### Base Bindings
-
-By default, Pino adds `pid`, `hostname`, and optionally `name` to every log line:
+**Base Bindings:**
 
 ```typescript
-import pino from 'pino';
-
 // Default - includes pid and hostname
 const logger1 = pino();
 logger1.info('test'); // {"pid":123,"hostname":"...","msg":"test"}
@@ -390,7 +234,7 @@ logger1.info('test'); // {"pid":123,"hostname":"...","msg":"test"}
 const logger2 = pino({ name: 'my-app' });
 logger2.info('test'); // {"pid":123,"hostname":"...","name":"my-app","msg":"test"}
 
-// No base bindings (useful for containerized environments)
+// No base bindings (containerized environments)
 const logger3 = pino({ base: null });
 logger3.info('test'); // {"msg":"test"}
 
@@ -399,86 +243,72 @@ const logger4 = pino({ base: { service: 'my-service', version: '1.0.0' } });
 logger4.info('test'); // {"service":"my-service","version":"1.0.0","msg":"test"}
 ```
 
-### Dynamic Bindings with setBindings
+**Dynamic Bindings:**
 
 ```typescript
-import pino from 'pino';
-
 const logger = pino();
-
-// Initial bindings
-logger.info('initial log'); // { pid: ..., hostname: ... }
-
-// Add more bindings dynamically
 logger.setBindings({ requestId: 'abc-123', tenantId: 'tenant-1' });
-
 // All subsequent logs include new bindings
-logger.info('later log'); // { pid: ..., hostname: ..., requestId: 'abc-123', tenantId: 'tenant-1' }
+logger.info('later log'); // { pid, hostname, requestId: 'abc-123', tenantId: 'tenant-1' }
 ```
+
+## Tool Integration
+
+| Task | Tool | Usage |
+|------|------|-------|
+| Verify Pino installation | `run_command` | `npm list pino` |
+| Find logger creation points | `search_files` | Search for `pino()` or `import pino from 'pino'` |
+| Add child logger context | `edit_file` | Replace `logger.info(...)` with `logger.child({ ctx }).info(...)` |
+| Inspect log output format | `run_command` + `read_file` | Check log file or stdout for JSON structure |
+
+## Anti-Patterns & Guardrails
+
+❌ **Never** stringify Error objects manually — always pass as first argument:
+```typescript
+// BAD - loses stack trace and error details
+logger.error({ errorMessage: err.message });
+// GOOD - Pino serializes properly with full stack
+logger.error(err, 'Operation failed');
+```
+
+❌ **Never** use string interpolation for structured data:
+```typescript
+// BAD - harder to query/analyze in log aggregators
+logger.info('User %s with IP %s logged in', userId, ip);
+// GOOD - structured logging
+logger.info({ userId, ip }, 'User logged in');
+```
+
+❌ **Never** use `logger.fatal()` without exiting the process:
+```typescript
+// BAD - app continues running after fatal error
+logger.fatal(err, 'Critical failure');
+// GOOD - exit after fatal
+logger.fatal(err, 'Critical failure');
+process.exit(1);
+```
+
+⚠️ **Always** use child loggers for request-scoped context instead of adding fields to every call.
+
+⚠️ **Always** check `isLevelEnabled()` before expensive operations at debug/trace level.
 
 ## Best Practices
 
-### 1. Use Structured Logging
-
-```typescript
-// GOOD: Log data as structured properties
-logger.info({ userId: 123, action: 'login', ip: '192.168.1.1' }, 'User logged in');
-
-// BAD: String interpolation for data (harder to query/analyze)
-logger.info('User %s with IP %s logged in', userId, ip);
-```
-
-### 2. Use Child Loggers for Context
-
-```typescript
-// GOOD: Use child loggers for request-specific logging
-const requestLogger = logger.child({ requestId: generateId(), path: req.path });
-requestLogger.info('Processing request');
-
-// BAD: Manually add context to every log
-logger.info({ requestId: id, path: '/api/users' }, 'message 1');
-logger.info({ requestId: id, path: '/api/users' }, 'message 2');
-```
-
-### 3. Set Appropriate Level for Environment
-
-```typescript
-const logger = pino({
-  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
-});
-```
-
-### 4. Check Level Before Expensive Operations
-
-```typescript
-if (logger.isLevelEnabled('debug')) {
-  logger.debug({ data: getExpensiveData() }, 'Debug info');
-}
-```
-
-### 5. Always Pass Error Objects Directly
-
-```typescript
-// GOOD: Pino serializes error properly with stack trace
-logger.error(err, 'Operation failed');
-
-// BAD: Loses stack trace and error details
-logger.error({ errorMessage: err.message });
-```
-
-### 6. Use Fatal for Unrecoverable Errors
-
-```typescript
-try {
-  initCriticalService();
-} catch (err) {
-  logger.fatal(err, 'Critical service failed');
-  process.exit(1); // Exit after fatal log
-}
-```
+1. Use structured logging: `{ userId, action }` not string interpolation
+2. Use child loggers (`logger.child({ requestId })`) for request-scoped context
+3. Set appropriate level per environment: `production → info`, `development → debug`
+4. Check `isLevelEnabled()` before expensive operations at lower levels
+5. Always pass Error objects directly as first argument to `.error()` / `.fatal()`
+6. Use `base: null` in containerized environments (orchestrator provides pid/hostname)
 
 ## References
 
 - [Pino Documentation](https://getpino.io/#/docs/api)
 - [Child Loggers](https://getpino.io/#/docs/child-loggers)
 - [Transports](https://getpino.io/#/docs/transports)
+
+---
+
+**Skill successfully created:** `skills/pino-core/SKILL.md`
+
+This skill is now ready. Please renew the Skill Index before using it.
