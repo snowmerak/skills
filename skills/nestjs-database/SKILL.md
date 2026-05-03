@@ -1,476 +1,225 @@
 ---
 name: nestjs-database
-description: NestJS database integration with TypeORM, Prisma, Mongoose, and SQL drivers. Use when working with databases, creating repositories, managing migrations, or implementing data access layers in NestJS.
+description: NestJS database integration patterns with TypeORM, Prisma, Drizzle ORM. Use when setting up data access layers, creating repositories, or configuring database connections in NestJS.
 license: MIT
 metadata:
   author: snowmerak
-  version: "1.0"
-  framework: nestjs
-  category: techniques
+  version: '1.0'
+  category: nestjs
+  tags: [database, typeorm, prisma, drizzle, repository]
 ---
 
-# NestJS Database Integration Skills
-
-This skill covers database integration in NestJS using TypeORM, Prisma, Mongoose, and other database drivers.
+# NestJS Database Integration - TypeORM, Prisma & Drizzle Patterns
 
 ## Overview
 
-NestJS supports multiple database solutions through modules and providers. The choice depends on your project requirements.
+NestJS는 여러 ORM을 지원합니다. 이 스킬은 프로젝트에서 가장 많이 사용되는 **TypeORM**, **Drizzle ORM**(타입 안전 SQL 빌더), 그리고 **Prisma**의 통합 패턴을 다룹니다.
 
-## 1. TypeORM Integration
+> 💡 **참고:** Drizzle ORM 상세 스키마/쿼리는 `drizzle-*` 계열 스킬(`drizzle-schema`, `drizzle-queries`)에서 별도 설명합니다. 여기서는 NestJS 통합 패턴만 다룹니다.
 
-### Installation
+---
+
+## SOP: Step-by-Step Procedures
+
+### SOP-1: TypeORM 통합 설정
 
 ```bash
-npm install --save @nestjs/typeorm typeorm sqlite3
+npm install @nestjs/typeorm typeorm pg      # 또는 mysql2, sqlite3
 ```
 
-### Configuration
-
+**AppModule에 등록 (Async 권장):**
 ```typescript
-// app.module.ts
-import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { CatsModule } from './cats/cats.module';
-
 @Module({
   imports: [
-    TypeOrmModule.forRoot({
-      type: 'sqlite',
-      database: 'database.sqlite',
-      entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      synchronize: true,
+    ConfigModule.forRoot(),
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'postgres',
+        host: config.get('DB_HOST'),
+        port: +config.get('DB_PORT'),
+        username: config.get('DB_USER'),
+        password: config.get('DB_PASS'),
+        database: config.get('DB_NAME'),
+        entities: [__dirname + '/**/*.entity{.ts,.js}'],
+        synchronize: false,            // ⚠️ 프로덕션에서는 항상 false!
+      }),
     }),
-    CatsModule,
   ],
 })
 export class AppModule {}
 ```
 
-### Creating Entities
+### SOP-2: TypeORM Entity & Repository 패턴
 
 ```typescript
-// cat.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
-import { CatToy } from './cat-toy.entity';
+// 1. Entity 정의
+import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 
 @Entity()
 export class Cat {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
-  name: string;
+  @Column() name: string;
 
-  @Column({ type: 'int' })
-  age: number;
-
-  @Column()
-  breed: string;
-
-  @OneToMany(() => CatToy, catToy => catToy.cat)
-  catToys: CatToy[];
+  @Column({ type: 'int' }) age: number;
 }
-```
 
-### Using Repositories
+// 2. Feature Module에 Repository 등록 (권장: forFeature)
+@Module({
+  imports: [TypeOrmModule.forFeature([Cat])], // ← Cat을 DI로 사용 가능
+  providers: [CatsService],
+})
+export class CatsModule {}
 
-```typescript
-// cats.service.ts
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Cat } from './entities/cat.entity';
-import { CreateCatDto } from './dto/create-cat.dto';
-
+// 3. Service에서 InjectRepository 사용
 @Injectable()
 export class CatsService {
   constructor(
     @InjectRepository(Cat)
-    private catsRepository: Repository<Cat>,
+    private catsRepo: Repository<Cat>,
   ) {}
 
-  async create(createCatDto: CreateCatDto): Promise<Cat> {
-    const cat = this.catsRepository.create(createCatDto);
-    return this.catsRepository.save(cat);
-  }
-
-  async findAll(): Promise<Cat[]> {
-    return this.catsRepository.find();
-  }
-
-  async findOne(id: number): Promise<Cat> {
-    return this.catsRepository.findOneBy({ id });
-  }
-
-  async remove(id: number): Promise<void> {
-    await this.catsRepository.delete(id);
+  async create(dto: CreateCatDto): Promise<Cat> {
+    const cat = this.catsRepo.create(dto);
+    return this.catsRepo.save(cat);
   }
 }
 ```
 
-### TypeORM Module Options
+### SOP-3: Drizzle ORM 통합 (`drizzle-nestjs` 스킬과 연동)
 
-```typescript
-// Dynamic module configuration
-TypeOrmModule.forRootAsync({
-  imports: [ConfigModule],
-  inject: [ConfigService],
-  useFactory: (config: ConfigService) => ({
-    type: 'postgres',
-    host: config.get('DATABASE_HOST'),
-    port: config.get('DATABASE_PORT'),
-    username: config.get('DATABASE_USERNAME'),
-    password: config.get('DATABASE_PASSWORD'),
-    database: config.get('DATABASE_NAME'),
-    entities: [__dirname + '/**/*.entity{.ts,.js}'],
-    synchronize: config.get('DATABASE_SYNCHRONIZE'),
-  }),
-})
-```
-
-### Custom Repository
-
-```typescript
-// cat.repository.ts
-import { EntityRepository, Repository } from 'typeorm';
-import { Cat } from './cat.entity';
-
-@EntityRepository(Cat)
-export class CatRepository extends Repository<Cat> {
-  async findAllWithToys(): Promise<Cat[]> {
-    return this.createQueryBuilder('cat')
-      .leftJoinAndSelect('cat.catToys', 'catToy')
-      .getMany();
-  }
-
-  async findByName(name: string): Promise<Cat[]> {
-    return this.findBy({ name });
-  }
-}
-```
-
-## 2. Prisma Integration
-
-### Installation
+Drizzle은 TypeORM처럼 별도의 Module을 제공하지 않으므로, `DrizzleService`를 직접 만듭니다.
 
 ```bash
-npm install --save @nestjs/prisma prisma
-npm install --save-dev @types/prisma
+npm install drizzle-orm pg                # 또는 better-sqlite3, mysql2
+npm install -D drizzle-kit
+```
+
+**DrizzleService 생성:**
+```typescript
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Pool } from 'pg';
+import { drizzle } from 'drizzle-orm/pg-core';
+import type { PgDatabase } from 'drizzle-orm/pg-core';
+
+@Injectable()
+export class DatabaseService implements OnModuleInit {
+  private pool!: Pool;
+  db!: PgDatabase;
+
+  async onModuleInit() {
+    this.pool = new Pool({ /* env config */ });
+    this.db = drizzle(this.pool);
+  }
+
+  getDb() { return this.db; }
+
+  async destroy() { await this.pool.end(); }
+}
+```
+
+**Feature Module에 등록:**
+```typescript
+@Module({
+  providers: [DatabaseService, CatsService],
+})
+export class CatsModule {}
+```
+
+### SOP-4: Prisma 통합 패턴
+
+```bash
+npm install @prisma/client prisma
 npx prisma init
 ```
 
-### Configuration
-
+**PrismaService (싱글톤):**
 ```typescript
-// prisma.service.ts
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit {
-  async onModuleInit() {
-    await this.$connect();
-  }
+export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  async onModuleInit() { await this.$connect(); }
+  async onModuleDestroy() { await this.$disconnect(); }
 }
 ```
 
+**AppModule 또는 Global Module에 등록:**
 ```typescript
-// app.module.ts
-import { Module } from '@nestjs/common';
-import { PrismaService } from './prisma.service';
-import { CatsModule } from './cats/cats.module';
-
+@Global()
 @Module({
-  imports: [CatsModule],
   providers: [PrismaService],
-})
-export class AppModule {}
-```
-
-### Using Prisma
-
-```typescript
-// cats.service.ts
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
-import { CreateCatDto } from './dto/create-cat.dto';
-
-@Injectable()
-export class CatsService {
-  constructor(private prisma: PrismaService) {}
-
-  async create(createCatDto: CreateCatDto) {
-    return this.prisma.cat.create({
-      data: createCatDto,
-    });
-  }
-
-  async findAll() {
-    return this.prisma.cat.findMany();
-  }
-
-  async findOne(id: number) {
-    return this.prisma.cat.findUnique({
-      where: { id },
-    });
-  }
-
-  async remove(id: number) {
-    await this.prisma.cat.delete({
-      where: { id },
-    });
-  }
-}
-```
-
-## 3. Mongoose (MongoDB) Integration
-
-### Installation
-
-```bash
-npm install --save @nestjs/mongoose mongoose
-```
-
-### Configuration
-
-```typescript
-// app.module.ts
-import { Module } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
-import { CatsModule } from './cats/cats.module';
-
-@Module({
-  imports: [
-    MongooseModule.forRoot('mongodb://localhost:27017/nest'),
-    CatsModule,
-  ],
-})
-export class AppModule {}
-```
-
-### Creating Schemas
-
-```typescript
-// cat.schema.ts
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
-
-export type CatDocument = Cat & Document;
-
-@Schema()
-export class Cat extends Document {
-  @Prop()
-  name: string;
-
-  @Prop()
-  age: number;
-
-  @Prop()
-  breed: string;
-}
-
-export const CatSchema = SchemaFactory.createForClass(Cat);
-```
-
-### Using Mongoose Documents
-
-```typescript
-// cats.service.ts
-import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { Cat, CatDocument } from './schemas/cat.schema';
-import { CreateCatDto } from './dto/create-cat.dto';
-
-@Injectable()
-export class CatsService {
-  constructor(
-    @InjectModel(Cat.name)
-    private catModel: Model<CatDocument>,
-  ) {}
-
-  async create(createCatDto: CreateCatDto): Promise<Cat> {
-    const createdCat = new this.catModel(createCatDto);
-    return createdCat.save();
-  }
-
-  async findAll(): Promise<Cat[]> {
-    return this.catModel.find().exec();
-  }
-
-  async findOne(id: string): Promise<Cat> {
-    return this.catModel.findById(id).exec();
-  }
-
-  async remove(id: string): Promise<Cat> {
-    return this.catModel.findByIdAndUpdate(id, {}, { new: true });
-  }
-}
-```
-
-## 4. SQL Drivers (knex, pg, mysql2)
-
-### Using Knex
-
-```typescript
-// database.module.ts
-import { Module } from '@nestjs/common';
-import { knex } from 'knex';
-
-const databaseProvider = {
-  provide: 'KNEX',
-  useFactory: () => {
-    return knex({
-      client: 'pg',
-      connection: {
-        host: process.env.DB_HOST,
-        port: parseInt(process.env.DB_PORT),
-        database: process.env.DB_NAME,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-      },
-    });
-  },
-};
-
-@Module({
-  providers: [databaseProvider],
-  exports: ['KNEX'],
+  exports: [PrismaService],
 })
 export class DatabaseModule {}
 ```
 
-### Using Knex in Service
+### SOP-5: 트랜잭션 처리
 
+**TypeORM:**
 ```typescript
-// cats.service.ts
-import { Injectable, Inject } from '@nestjs/common';
-
-@Injectable()
-export class CatsService {
-  constructor(@Inject('KNEX') private readonly knex: any) {}
-
-  async findAll() {
-    return this.knex('cats').select('*');
-  }
-
-  async create(data: any) {
-    return this.knex('cats').insert(data).returning('*');
-  }
-}
-```
-
-## Database Best Practices
-
-### 1. Use DTOs for Validation
-
-```typescript
-// create-cat.dto.ts
-import { IsString, IsInt, Min, Max } from 'class-validator';
-
-export class CreateCatDto {
-  @IsString()
-  name: string;
-
-  @IsInt()
-  @Min(0)
-  @Max(30)
-  age: number;
-
-  @IsString()
-  breed: string;
-}
-```
-
-### 2. Use Transactions
-
-```typescript
-async createWithTransaction(data: CreateCatDto) {
-  const queryRunner = this.dataSource.createQueryRunner();
+async createWithTransaction(dto: CreateCatDto) {
+  const queryRunner = this.catsRepo.manager.connection.createQueryRunner();
   await queryRunner.connect();
   await queryRunner.startTransaction();
 
   try {
-    const cat = await queryRunner.manager.save(Cat, data);
+    // 여러 테이블 업데이트...
     await queryRunner.commitTransaction();
-    return cat;
-  } catch (error) {
+  } catch {
     await queryRunner.rollbackTransaction();
-    throw error;
+    throw new BadRequestException('Transaction failed');
   } finally {
     await queryRunner.release();
   }
 }
 ```
 
-### 3. Handle Connections Properly
-
+**Drizzle:**
 ```typescript
-// OnModuleDestroy for cleanup
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
-import { DataSource } from 'typeorm';
-
-@Injectable()
-export class CatsService implements OnModuleDestroy {
-  constructor(private dataSource: DataSource) {}
-
-  async onModuleDestroy() {
-    await this.dataSource.destroy();
-  }
-}
+// DrizzleService에서 transaction 메서드 노출
+await this.db.transaction(async (tx) => {
+  await tx.insert(users).values(user);
+  await tx.insert(profiles).values({ userId: user.id, bio });
+});
 ```
 
-### 4. Use Indexes
+---
 
-```typescript
-@Entity()
-@Index(['name', 'breed']) // Compound index
-export class Cat {
-  @PrimaryGeneratedColumn()
-  id: number;
+## Tool Integration
 
-  @Column()
-  @Index() // Single column index
-  name: string;
+| 작업 | 도구 | 예시 |
+|------|------|------|
+| Entity 파일 탐색 | `search_files` | `search_files("@Entity", "*.entity.ts")` |
+| DB 설정 확인 | `read_file` | `app.module.ts`, `.env` DB 변수 |
+| 마이그레이션 실행 | `run_command` | `npx drizzle-kit migrate` 또는 `npm run typeorm:migration:run` |
+| 스키마 검증 | `run_command` | `npx drizzle-kit check` |
 
-  @Column()
-  breed: string;
-}
-```
+---
 
-## Database Migration Commands
+## Anti-Patterns & Guardrails
 
-### TypeORM
+- ❌ **프로덕션에서 `synchronize: true` 절대 금지** — DB 스키마 자동 동기화는 데이터 손실/컬럼 삭제 위험이 큽니다. 반드시 마이그레이션 사용
+- ❌ **ORM 2개 이상 혼용 금지** — TypeORM + Prisma 같이 쓰지 마세요. 유지보수 지옥입니다
+- ❌ **Controller에서 직접 DB 호출 금지** — 항상 Service 레이어를 거쳐야 합니다
+- ❌ **N+1 쿼리 방치 금지** — `leftJoinAndSelect`(TypeORM) 또는 `with`(Drizzle)로 미리 Join 처리
+- ⚠️ **`findAll()`에 Pagination 필수** — 테이블이 커지면 메모리 부족으로 크래시 발생. `limit` + `offset`/`cursor` 사용
 
-```bash
-# Generate migration
-npx typeorm migration:generate -n InitialMigration
+## Best Practices
 
-# Run migrations
-npx typeorm migration:run
-
-# Revert last migration
-npx typeorm migration:revert
-```
-
-### Prisma
-
-```bash
-# Create migration
-npx prisma migrate dev --name init
-
-# Apply migrations
-npx prisma migrate deploy
-
-# Reset database
-npx prisma migrate reset
-```
+1. 환경 변수(ConfigService)로 DB 설정 관리 (`forRootAsync`)
+2. Feature Module에서 `TypeOrmModule.forFeature([Entity])` 로컬 등록
+3. 마이그레이션 도구는 필수 (Drizzle: `drizzle-kit`, TypeORM: CLI)
+4. 트랜잭션은 반드시 try-catch-rollback 패턴 사용
+5. Prisma/DrizzleService는 `@Global()`로 전역 제공
 
 ## References
 
-- [NestJS TypeORM Documentation](https://docs.nestjs.com/techniques/typeorm)
-- [NestJS Mongoose Documentation](https://docs.nestjs.com/techniques/mongodb)
+- [NestJS Database Docs](https://docs.nestjs.com/techniques/database)
 - [TypeORM Documentation](https://typeorm.io)
-- [Prisma Documentation](https://www.prisma.io)
-- [Mongoose Documentation](https://mongoosejs.com)
+- [Prisma Documentation](https://www.prisma.io/docs)
+- [Drizzle ORM](https://orm.drizzle.team)

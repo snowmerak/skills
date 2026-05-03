@@ -1,424 +1,204 @@
 ---
 name: nestjs-openapi
-description: NestJS OpenAPI (Swagger) integration for API documentation. Use when generating API documentation, documenting endpoints, or creating interactive API specs in NestJS.
+description: NestJS OpenAPI (Swagger) integration for automatic API documentation generation. Use when setting up Swagger UI, documenting controllers/DTOs, or creating interactive API specs in NestJS.
 license: MIT
 metadata:
   author: snowmerak
-  version: "1.0"
-  framework: nestjs
-  category: openapi
+  version: '1.0'
+  category: nestjs
+  tags: [openapi, swagger, api-docs, documentation]
 ---
 
-# NestJS OpenAPI (Swagger) Skills
-
-This skill covers OpenAPI/Swagger documentation generation in NestJS applications.
+# NestJS OpenAPI - Swagger Documentation Generation
 
 ## Overview
 
-NestJS provides built-in Swagger integration through the `@nestjs/swagger` package, making it easy to generate comprehensive API documentation.
+NestJS는 `@nestjs/swagger` 패키지를 통해 코드 데코레이터로 자동으로 OpenAPI 3.0 문서를 생성합니다. Swagger UI를 설정하면 브라우저에서 대화형 API 테스트가 가능합니다.
 
-## Installation
+---
+
+## SOP: Step-by-Step Procedures
+
+### SOP-1: 설치 및 기본 설정
 
 ```bash
-npm install --save @nestjs/swagger swagger-ui-express
+npm install @nestjs/swagger swagger-ui-express
 ```
 
-## 1. Basic Setup
-
-### Swagger Module Configuration
-
+**main.ts에 통합 (권장):**
 ```typescript
-// app.module.ts
-import { Module } from '@nestjs/common';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { CatsModule } from './cats/cats.module';
-
-@Module({
-  imports: [CatsModule],
-})
-export class AppModule {
-  configure(app: any) {
-    const config = new DocumentBuilder()
-      .setTitle('Cats example')
-      .setDescription('The cats API description')
-      .setVersion('1.0')
-      .addTag('cats')
-      .addBearerAuth()
-      .build();
-    
-    const document = SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('api', app, document);
-  }
-}
-```
-
-### Alternative Setup in main.ts
-
-```typescript
-// main.ts
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  
+
+  // 1. 문서 설정 정의
   const config = new DocumentBuilder()
-    .setTitle('Cats API')
-    .setDescription('The cats API description')
+    .setTitle('My API')
+    .setDescription('API Documentation')
     .setVersion('1.0')
-    .addTag('cats')
-    .addBearerAuth()
+    .addTag('cats', 'Cat management endpoints')
+    .addBearerAuth({                           // ← JWT 인증 데모용
+      type: 'http', scheme: 'bearer', bearerFormat: 'JWT',
+    })
     .build();
-  
+
+  // 2. 문서 생성 및 Swagger UI 설정
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document);
-  
+  SwaggerModule.setup('api-docs', app, document, {                   // ← /api-docs 경로에서 접근
+    swaggerOptions: { persistAuthorization: true },
+  });
+
   await app.listen(3000);
 }
 bootstrap();
 ```
 
-## 2. API Documentation Decorators
+**⚠️ `SwaggerModule.setup()`은 반드시 `app.listen()` 전에 호출해야 합니다.**
 
-### Controller Documentation
+### SOP-2: Controller & DTO 문서화
 
 ```typescript
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+// 1. Controller — @ApiTags, @ApiOperation, @ApiResponse 사용
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { CatsService } from './cats.service';
 import { CreateCatDto } from './dto/create-cat.dto';
-import { Cat } from './entities/cat.entity';
+import { CatResponseDto } from './dto/cat-response.dto';
 
-@ApiTags('cats')
+@ApiTags('cats')                           // ← Swagger UI에서 그룹화
 @Controller('cats')
 export class CatsController {
-  constructor(private readonly catsService: CatsService) {}
+  constructor(private catsService: CatsService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a cat' })
-  @ApiResponse({ status: 201, description: 'Cat created successfully', type: Cat })
-  @ApiResponse({ status: 400, description: 'Bad request' })
-  create(@Body() createCatDto: CreateCatDto): Cat {
-    return this.catsService.create(createCatDto);
-  }
-
-  @Get()
-  @ApiOperation({ summary: 'Get all cats' })
-  @ApiResponse({ status: 200, description: 'Return all cats', type: [Cat] })
-  findAll(): Cat[] {
-    return this.catsService.findAll();
-  }
+  @ApiOperation({ summary: '새 고양이 추가' })          // ← 한국어/영어 요약
+  @ApiResponse({ status: 201, description: '성공', type: CatResponseDto })
+  @ApiResponse({ status: 400, description: '검증 실패' })
+  create(@Body() dto: CreateCatDto) { return this.catsService.create(dto); }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get a cat by ID' })
-  @ApiResponse({ status: 200, description: 'Return cat by ID' })
-  @ApiResponse({ status: 404, description: 'Cat not found' })
-  findOne(@Param('id') id: string): Cat {
-    return this.catsService.findOne(id);
-  }
+  @ApiOperation({ summary: '고양이 조회' })
+  @ApiResponse({ status: 200, type: CatResponseDto })
+  @ApiResponse({ status: 404, description: '존재하지 않음' })
+  findOne(@Param('id') id: string) { return this.catsService.findOne(id); }
 }
 ```
 
-### DTO Documentation
+### SOP-3: DTO 필드 문서화 (`@ApiProperty`)
 
 ```typescript
-import { IsString, IsInt, Min, Max } from 'class-validator';
+import { IsString, IsInt, Min, Max, IsOptional } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateCatDto {
   @ApiProperty({
-    description: 'Name of the cat',
+    description: '고양이 이름',
     example: 'Kitty',
-    required: true,
+    minLength: 2,
   })
-  @IsString()
-  name: string;
+  @IsString() name: string;
 
   @ApiProperty({
-    description: 'Age of the cat',
-    example: 2,
-    minimum: 0,
-    maximum: 30,
+    description: '나이 (0~30)',
+    example: 3,
+    minimum: 0, maximum: 30,
   })
-  @IsInt()
-  @Min(0)
-  @Max(30)
-  age: number;
+  @IsInt() age: number;
 
-  @ApiProperty({
-    description: 'Breed of the cat',
+  @ApiPropertyOptional({                   // ← ? 필드는 Optional 사용
+    description: '품종 (선택사항)',
     example: 'Persian',
   })
-  @IsString()
-  breed: string;
-
-  @ApiPropertyOptional({
-    description: 'Email of the owner',
-    example: 'owner@example.com',
-  })
-  @IsString()
-  ownerEmail?: string;
+  @IsOptional() breed?: string;
 }
 ```
 
-### Entity Documentation
+**⚠️ `@ApiProperty`는 반드시 `class-validator` 데코레이터 위에 배치하세요.** 순서가 중요합니다.
 
-```typescript
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
-import { ApiProperty } from '@nestjs/swagger';
+### SOP-4: nest-cli.json에 Swagger 플러그인 등록 (자동 생성)
 
-export class Cat {
-  @ApiProperty({ example: 1, description: 'Cat ID' })
-  @PrimaryGeneratedColumn()
-  id: number;
+데코레이터를 최소화하고 주석에서 자동으로 OpenAPI 스키마를 생성하려면 `nest-cli.json`을 수정합니다.
 
-  @ApiProperty({ example: 'Kitty', description: 'Cat name' })
-  @Column()
-  name: string;
-
-  @ApiProperty({ example: 2, description: 'Cat age' })
-  @Column({ type: 'int' })
-  age: number;
-
-  @ApiProperty({ example: 'Persian', description: 'Cat breed' })
-  @Column()
-  breed: string;
+```json
+{
+  "compilerOptions": {
+    "plugins": [
+      {
+        "name": "@nestjs/swagger",
+        "options": {
+          "classValidatorShim": true,       // class-validator 데코레이터를 Swagger로 자동 매핑
+          "introspectComments": true         // JSDoc 주석에서 description 추출
+        }
+      }
+    ]
+  }
 }
 ```
 
-## 3. Advanced Documentation
-
-### Schema References
-
+**이 설정 후엔 이보다 더 간단해집니다:**
 ```typescript
-import { ApiProperty, getSchemaPath } from '@nestjs/swagger';
+export class CreateCatDto {
+  /** 고양이 이름 */                    // ← JSDoc 주석이 자동으로 description이 됨
+  @IsString() name: string;
 
-export class CatResponseDto {
-  @ApiProperty()
-  id: number;
-
-  @ApiProperty()
-  name: string;
-
-  @ApiProperty({
-    example: {
-      id: 1,
-      name: 'Kitty',
-      age: 2,
-    },
-  })
-  cat: Cat;
+  /** 나이 (0~30) */                    // ← @ApiProperty 필요 없음!
+  @IsInt() age: number;
 }
 ```
 
-### Response Types
+### SOP-5: Enum & 중첩 응답 문서화
 
 ```typescript
-@Get()
-@ApiResponse({
-  status: 200,
-  description: 'Array of cats',
-  schema: {
-    type: 'array',
-    items: { $ref: getSchemaPath(Cat) },
-  },
-})
-findAll(): Cat[] {}
+// Enum 자동 스키마 생성
+export enum CatStatus { ACTIVE = 'active', INACTIVE = 'inactive' }
+
+@ApiProperty({ enum: CatStatus, example: CatStatus.ACTIVE })
+status: CatStatus;
+
+// 배열 응답 (중첩)
+@ApiResponse({ status: 200, type: [CatResponseDto] }) // ← []로 배열 표시
+findAll() { return this.catsService.findAll(); }
 ```
 
-### Request Body Documentation
+### SOP-6: 환경별 Swagger UI 토글
 
 ```typescript
-@Post()
-@ApiOperation({ summary: 'Create a new cat' })
-@ApiResponse({ status: 201, type: Cat })
-@ApiBody({
-  type: CreateCatDto,
-  examples: {
-    persian: {
-      summary: 'Persian cat',
-      value: {
-        name: 'Fluffy',
-        age: 3,
-        breed: 'Persian',
-      },
-    },
-    siamese: {
-      summary: 'Siamese cat',
-      value: {
-        name: 'Kitty',
-        age: 2,
-        breed: 'Siamese',
-      },
-    },
-  },
-})
-create(@Body() createCatDto: CreateCatDto): Cat {
-  return this.catsService.create(createCatDto);
-}
-```
-
-### Query Parameters
-
-```typescript
-@Get()
-@ApiOperation({ summary: 'Filter cats' })
-@ApiQuery({
-  name: 'age',
-  required: false,
-  type: Number,
-  description: 'Filter by age',
-})
-@ApiQuery({
-  name: 'breed',
-  required: false,
-  type: String,
-  description: 'Filter by breed',
-})
-findAll(@Query('age') age?: number, @Query('breed') breed?: string): Cat[] {}
-```
-
-### Path Parameters
-
-```typescript
-@Get(':id')
-@ApiOperation({ summary: 'Get cat by ID' })
-@ApiParam({
-  name: 'id',
-  required: true,
-  type: Number,
-  description: 'Cat ID',
-})
-findOne(@Param('id') id: string): Cat {}
-```
-
-### Headers
-
-```typescript
-@Get()
-@ApiOperation({ summary: 'Get cats with pagination' })
-@ApiHeader({
-  name: 'X-Request-ID',
-  required: false,
-  description: 'Request ID for tracking',
-})
-findAll(): Cat[] {}
-```
-
-## 4. Authentication Documentation
-
-### Bearer Auth
-
-```typescript
-const config = new DocumentBuilder()
-  .addBearerAuth({
-    type: 'http',
-    scheme: 'bearer',
-    bearerFormat: 'JWT',
-    name: 'JWT',
-    description: 'Enter JWT token',
-    in: 'header',
-  })
-  .build();
-```
-
-### Applying Auth to Endpoints
-
-```typescript
-@Get()
-@ApiOperation({ summary: 'Get all cats' })
-@ApiResponse({ status: 200, type: [Cat] })
-@ApiBearerAuth()
-findAll(): Cat[] {}
-```
-
-## 5. Conditional Documentation
-
-### Environment-based Swagger
-
-```typescript
-// main.ts
-if (app.get(ConfigService).get('ENABLE_SWAGGER')) {
-  const config = new DocumentBuilder()
-    .setTitle('API')
-    .setDescription('API Documentation')
-    .setVersion('1.0')
-    .build();
-  
+if (process.env.NODE_ENV !== 'production') {          // ← 개발/스테이징에서만 활성화
+  const config = new DocumentBuilder().setTitle('API').build();
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document);
+  SwaggerModule.setup('api-docs', app, document);
 }
 ```
 
-### Feature Flags
+---
 
-```typescript
-@ApiHideProperty()
-@Exclude()
-internalField: string;
+## Tool Integration
 
-@ApiIgnore()
-@Get('internal')
-internalEndpoint() {}
-```
+| 작업 | 도구 | 예시 |
+|------|------|------|
+| 데코레이터 사용 확인 | `search_files` | `search_files("@ApiProperty", "*.dto.ts")` |
+| Swagger 설정 읽기 | `read_file` | `main.ts`, `nest-cli.json` 플러그인 설정 |
+| Swagger UI 접근 | 브라우저 | `http://localhost:3000/api-docs` 확인 |
 
-## 6. Custom Options
+---
 
-### Swagger UI Options
+## Anti-Patterns & Guardrails
 
-```typescript
-SwaggerModule.setup('api', app, document, {
-  swaggerOptions: {
-    persistAuthorization: true,
-    docExpansion: 'list',
-    defaultModelsExpandDepth: -1,
-    displayRequestDuration: true,
-    filter: true,
-  },
-  customSiteTitle: 'My API Documentation',
-});
-```
-
-### Multiple Documents
-
-```typescript
-const config1 = new DocumentBuilder()
-  .setTitle('Public API')
-  .addTag('public')
-  .build();
-
-const config2 = new DocumentBuilder()
-  .setTitle('Admin API')
-  .addTag('admin')
-  .addBearerAuth()
-  .build();
-
-SwaggerModule.setup('api/public', app, document1);
-SwaggerModule.setup('api/admin', app, document2);
-```
-
-## 7. NestJS Devtools Integration
-
-NestJS Devtools provides enhanced Swagger experience:
-- Graph visualizer
-- Routes navigator
-- Interactive playground
-- CI/CD integration
+- ❌ **프로덕션에서 Swagger UI 노출 금지** — 환경 변수 체크로 비활성화 필수
+- ❌ **`@ApiResponse` 누락 시 클라이언트가 예상할 수 없는 응답 타입 노출** — 최소한 200/400/401/500은 명시
+- ❌ **JWT secret을 Swagger 예시에 포함 금지** — `example` 필드에 실제 토큰값 넣지 마세요
+- ⚠️ **`classValidatorShim: true` 설정 시에도 복잡한 검증 로직은 수동 `@ApiProperty` 추가 필요**
 
 ## Best Practices
 
-1. **Document all endpoints** - Use `@ApiOperation` and `@ApiResponse`
-2. **Provide examples** - Use `example` property in `@ApiProperty`
-3. **Use tags** - Group related endpoints with `@ApiTags`
-4. **Document authentication** - Show auth requirements clearly
-5. **Keep DTOs clean** - Separate validation DTOs from response DTOs
-6. **Use schema references** - For complex nested objects
-7. **Test documentation** - Ensure examples are accurate
-8. **Update on changes** - Keep docs in sync with code
+1. `nest-cli.json`에 Swagger 플러그인 등록 → 데코레이터 최소화, JSDoc 활용
+2. 전역 인증(`addBearerAuth`) 설정으로 모든 엔드포인트에서 테스트 가능
+3. DTO 응답 타입 명시 (`type: ResponseDto`) — 클라이언트 코드 생성 용이
+4. 환경변수로 프로덕션 Swagger UI 비활성화
 
 ## References
 
-- [NestJS Swagger Documentation](https://docs.nestjs.com/openapi/introduction)
+- [NestJS Swagger Docs](https://docs.nestjs.com/openapi/introduction)
+- [@nestjs/swagger GitHub](https://github.com/nestjs/swagger)
 - [OpenAPI Specification](https://swagger.io/specification/)
-- [Swagger UI](https://swagger.io/tools/swagger-ui/)

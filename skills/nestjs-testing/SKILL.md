@@ -4,40 +4,22 @@ description: NestJS testing strategies including unit tests, integration tests, 
 license: MIT
 metadata:
   author: snowmerak
-  version: "1.0"
-  framework: nestjs
-  category: testing
+  version: '1.0'
+  category: nestjs
+  tags: [testing, unit-test, e2e, jest, mocking]
 ---
 
-# NestJS Testing Skills
+# NestJS Testing - Unit, Integration & E2E Strategies
 
-This skill covers testing strategies for NestJS applications including unit tests, integration tests, and e2e tests.
+## Overview
 
-## Test Types
+NestJS는 Jest를 기본 테스트 프레임워크로 제공합니다. 단위 테스트(Service/Controller 고립), 통합 테스트(여러 컴포넌트 연동), E2E 테스트(HTTP 서버 전체) 세 가지 레벨을 지원합니다.
 
-### 1. Unit Tests
+---
 
-Unit tests isolate individual components (services, controllers) without external dependencies.
+## SOP: Step-by-Step Procedures
 
-#### Testing Services
-
-```typescript
-// cats.service.ts
-import { Injectable } from '@nestjs/common';
-
-@Injectable()
-export class CatsService {
-  private readonly cats: string[] = [];
-
-  create(cat: string) {
-    this.cats.push(cat);
-  }
-
-  findAll(): string[] {
-    return this.cats;
-  }
-}
-```
+### SOP-1: Service 단위 테스트 작성
 
 ```typescript
 // cats.service.spec.ts
@@ -49,137 +31,100 @@ describe('CatsService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [CatsService],
+      providers: [CatsService],          // ← 테스트 대상만 등록
     }).compile();
 
     service = module.get<CatsService>(CatsService);
   });
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
+  it('should return all cats', () => {
+    service.create({ name: 'Kitty' });
+    expect(service.findAll()).toEqual([{ name: 'Kitty' }]);
   });
 
-  it('should return all cats', () => {
-    service.create('Kitty');
-    expect(service.findAll()).toEqual(['Kitty']);
+  it('should throw when not found', async () => {
+    await expect(service.findOne(999)).rejects.toThrow();
   });
 });
 ```
 
-#### Testing Controllers
+### SOP-2: Controller 테스트 (Service Mock)
+
+**핵심 원칙:** Controller만 테스트하고, Service는 **완전히 모킹**하세요.
 
 ```typescript
-// cats.controller.ts
-import { Controller, Get, Post, Body } from '@nestjs/common';
-import { CatsService } from './cats.service';
-
-@Controller('cats')
-export class CatsController {
-  constructor(private readonly catsService: CatsService) {}
-
-  @Post()
-  create(@Body() createCatDto: string) {
-    this.catsService.create(createCatDto);
-  }
-
-  @Get()
-  findAll() {
-    return this.catsService.findAll();
-  }
-}
-```
-
-```typescript
-// cats.controller.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
 import { CatsController } from './cats.controller';
 import { CatsService } from './cats.service';
 
 describe('CatsController', () => {
   let controller: CatsController;
-  let service: CatsService;
+
+  const mockCatsService = {
+    create: jest.fn(),
+    findAll: jest.fn().mockReturnValue([{ name: 'Kitty' }]),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [CatsController],
-      providers: [
-        {
-          provide: CatsService,
-          useValue: {
-            create: jest.fn(),
-            findAll: jest.fn().mockReturnValue(['Kitty']),
-          },
-        },
-      ],
+      providers: [{ provide: CatsService, useValue: mockCatsService }], // ← Mock 주입
     }).compile();
 
     controller = module.get<CatsController>(CatsController);
-    service = module.get<CatsService>(CatsService);
   });
 
   it('should create a cat', () => {
-    controller.create('Kitty');
-    expect(service.create).toHaveBeenCalledWith('Kitty');
+    controller.create({ name: 'Kitty' });
+    expect(mockCatsService.create).toHaveBeenCalledWith({ name: 'Kitty' });
   });
 
   it('should return all cats', () => {
-    const result = controller.findAll();
-    expect(result).toEqual(['Kitty']);
+    expect(controller.findAll()).toEqual([{ name: 'Kitty' }]);
   });
 });
 ```
 
-### 2. Integration Tests
-
-Integration tests test multiple components working together.
+### SOP-3: Integration 테스트 (실제 의존성 연동)
 
 ```typescript
 import { Test, TestingModule } from '@nestjs/testing';
-import { CatsModule } from './cats.module';
+import { CatsModule } from './cats.module';           // ← 전체 모듈 import
 import { CatsService } from './cats.service';
 
 describe('CatsModule Integration', () => {
-  let module: TestingModule;
   let service: CatsService;
 
   beforeEach(async () => {
-    module = await Test.createTestingModule({
-      imports: [CatsModule],
+    const module: TestingModule = await Test.createTestingModule({
+      imports: [CatsModule],                          // ← 실제 의존성 포함
     }).compile();
 
     service = module.get<CatsService>(CatsService);
   });
 
   it('should work with real dependencies', () => {
-    service.create('Kitty');
-    expect(service.findAll()).toEqual(['Kitty']);
+    service.create({ name: 'Kitty' });
+    expect(service.findAll()).toContainEqual(expect.objectContaining({ name: 'Kitty' }));
   });
 });
 ```
 
-### 3. E2E Tests
+### SOP-4: E2E 테스트 (HTTP 서버 전체)
 
-E2E tests test the entire application with a real HTTP server.
-
-#### Setup
-
-```typescript
-// test/jest-e2e.json
+1. `test/jest-e2e.json` 생성 (별도 Jest 설정):
+```json
 {
   "moduleFileExtensions": ["js", "json", "ts"],
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
-  "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
-  }
+  "transform": { "^.+\\.(t|j)s$": "ts-jest" }
 }
 ```
 
-#### E2E Test Example
-
+2. E2E 테스트 작성:
 ```typescript
-// cats.e2e-spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
@@ -188,208 +133,91 @@ import { AppModule } from '../src/app.module';
 describe('Cats E2E', () => {
   let app: INestApplication;
 
-  beforeEach(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    await app.init();
-  });
-
-  afterEach(async () => {
-    await app.close();
-  });
-
-  it('/cats (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/cats')
-      .expect(200)
-      .expect([]);
-  });
-
-  it('/cats (POST)', () => {
-    return request(app.getHttpServer())
-      .post('/cats')
-      .send({ name: 'Kitty', age: 2, breed: 'Persian' })
-      .expect(201)
-      .expect({ message: 'Cat created successfully' });
-  });
-});
-```
-
-## Mocking Strategies
-
-### Mocking Services
-
-```typescript
-const mockCatsService = {
-  findAll: jest.fn().mockReturnValue(['Kitty']),
-  create: jest.fn(),
-};
-
-beforeEach(async () => {
-  const module: TestingModule = await Test.createTestingModule({
-    controllers: [CatsController],
-    providers: [
-      {
-        provide: CatsService,
-        useValue: mockCatsService,
-      },
-    ],
-  }).compile();
-});
-```
-
-### Mocking Modules
-
-```typescript
-import { TypeOrmModule } from '@nestjs/typeorm';
-
-beforeEach(async () => {
-  const module: TestingModule = await Test.createTestingModule({
-    imports: [
-      // Mock TypeORM module
-      TypeOrmModule.forRoot({
-        type: 'sqlite',
-        database: ':memory:',
-        entities: [Cat],
-        synchronize: true,
-      }),
-    ],
-  }).compile();
-});
-```
-
-### Mocking External Services
-
-```typescript
-import { HttpService } from '@nestjs/axios';
-
-beforeEach(async () => {
-  const module: TestingModule = await Test.createTestingModule({
-    providers: [
-      MyService,
-      {
-        provide: HttpService,
-        useValue: {
-          get: jest.fn().mockResolvedValue({ data: { result: 'success' } }),
-        },
-      },
-    ],
-  }).compile();
-});
-```
-
-## Testing Utilities
-
-### Testing Module Builder
-
-```typescript
-// Create with specific providers
-const module = await Test.createTestingModule({
-  providers: [MyService, MockDependency],
-}).compile();
-
-// Import modules
-const module = await Test.createTestingModule({
-  imports: [MyModule],
-}).compile();
-
-// Override providers
-const module = await Test.createTestingModule({
-  imports: [MyModule],
-}).overrideProvider(MyService).useValue(mockService).compile();
-
-// Override guards
-const module = await Test.createTestingModule({
-  imports: [MyModule],
-}).overrideGuard(AuthGuard).useValue({ canActivate: () => true }).compile();
-
-// Override pipes
-const module = await Test.createTestingModule({
-  imports: [MyModule],
-}).overridePipe(ValidationPipe).useValue(new ValidationPipe({ whitelist: true })).compile();
-```
-
-### Testing Controllers with Supertest
-
-```typescript
-import * as request from 'supertest';
-
-describe('Controller E2E', () => {
-  let app: INestApplication;
-
   beforeAll(async () => {
-    app = await Test.createTestingModule({
+    const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
+
+    app = moduleRef.createNestApplication();
     await app.init();
   });
 
-  it('GET /cats', () => {
-    return request(app.getHttpServer())
-      .get('/cats')
-      .expect(200)
-      .expect('Content-Type', /json/)
-      .expect([
-        { name: 'Kitty', age: 2 },
-      ]);
-  });
+  afterAll(async () => { await app.close(); });
+
+  it('GET /cats → 200', () =>
+    request(app.getHttpServer()).get('/cats').expect(200));
+
+  it('POST /cats → 201', () =>
+    request(app.getHttpServer())
+      .post('/cats')
+      .send({ name: 'Kitty' })
+      .expect(201));
 });
 ```
+
+### SOP-5: Provider/Guard/Pipe Override 패턴
+
+```typescript
+// DB 모듈 Mock — In-memory SQLite 사용
+TypeOrmModule.forRoot({
+  type: 'sqlite', database: ':memory:', synchronize: true,
+})
+
+// Guard bypass — 테스트 시 인증 스킵
+.overrideGuard(AuthGuard)
+.useValue({ canActivate: () => true })
+.compile()
+
+// Service 전체 Mock
+.overrideProvider(PaymentsService)
+.useValue({ processPayment: jest.fn().mockResolvedValue(true) })
+.compile()
+
+// Module 전체 Mock (외부 모듈 대체)
+.overrideModule(HttpModule)
+.useModule({ providers: [{ provide: HttpService, useValue: mockHttp }] })
+```
+
+### SOP-6: 테스트 실행 명령어
+
+```bash
+npm run test          # 단위 테스트 (*.spec.ts)
+npm run test:watch    # watch 모드 — 파일 변경 자동 재실행
+npm run test:cov      # 코드 커버리지 리포트 생성
+npm run test:e2e      # E2E 테스트 (test/*.e2e-spec.ts)
+```
+
+---
+
+## Tool Integration
+
+| 작업 | 도구 | 예시 |
+|------|------|------|
+| 테스트 파일 탐색 | `search_files` | `search_files("describe(", "*.spec.ts")` |
+| 테스트 실행 | `run_command` | `npm run test -- --testPathPattern=cats` |
+| 커버리지 확인 | `run_command` | `npm run test:cov && read_file coverage/lcov-report/index.html` |
+| Jest 설정 읽기 | `read_file` | `jest.config.js`, `package.json` 테스트 스크립트 |
+
+---
+
+## Anti-Patterns & Guardrails
+
+- ❌ **Service를 모킹하지 않고 Controller 테스트 금지** — Controller 테스트는 Service 의존성을 완전히 격리해야 함
+- ❌ **"should be defined" 테스트 금지** — 의미 없는 확인 테스트. 실제 동작을 검증하세요
+- ❌ **E2E 테스트에서 프로덕션 DB 사용 금지** — In-memory SQLite 또는 별도 테스트 DB 사용
+- ❌ **`beforeAll`에 테스트 데이터 삽입 후 정리 안 함** — `afterEach`/`afterAll`에서 반드시 정리
+- ⚠️ **Mock 함수의 반환값 타입 실제와 다르면 테스트는 통과하지만 런타임 에러 발생** — Mock 시gnature 일치 확인 필수
 
 ## Best Practices
 
-1. **Test behavior, not implementation** - Focus on what the code does, not how
-2. **Use mocks for external dependencies** - Isolate units under test
-3. **Test edge cases** - Test null, undefined, empty arrays, errors
-4. **Use descriptive test names** - Explain what behavior is being tested
-5. **Keep tests independent** - Each test should be able to run alone
-6. **Test error scenarios** - Test exception handling
-7. **Use beforeEach/afterEach** - Clean up between tests
-
-## Testing Commands
-
-```bash
-# Run unit tests
-npm run test
-
-# Run unit tests in watch mode
-npm run test:watch
-
-# Run unit tests with coverage
-npm run test:cov
-
-# Run e2e tests
-npm run test:e2e
-
-# Run all tests
-npm run test
-```
-
-## Jest Configuration
-
-```json
-{
-  "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
-    "rootDir": "src",
-    "testRegex": ".*\\.spec\\.ts$",
-    "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
-    },
-    "collectCoverageFrom": [
-      "**/*.(t|j)s"
-    ],
-    "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
-  }
-}
-```
+1. 행동(Behavior)을 테스트하세요, 구현(Implementation)이 아닌
+2. 외부 의존성은 항상 Mock (DB, HTTP, Queue 등)
+3. 엣지 케이스 테스트: null, undefined, 빈 배열, 에러 상황
+4. 테스트명 명시적: `"should return empty array when no cats exist"`
+5. 테스트 독립성 — 각 `it` 블록이 단독으로 실행 가능해야 함
 
 ## References
 
-- [NestJS Testing Documentation](https://docs.nestjs.com/fundamentals/testing)
+- [NestJS Testing Docs](https://docs.nestjs.com/fundamentals/testing)
 - [Jest Documentation](https://jestjs.io)
 - [Supertest Documentation](https://github.com/ladjs/supertest)

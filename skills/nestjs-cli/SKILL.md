@@ -4,229 +4,116 @@ description: NestJS CLI commands and generators for scaffolding projects, creati
 license: MIT
 metadata:
   author: snowmerak
-  version: "1.0"
-  framework: nestjs
-  category: cli
+  version: '1.0'
+  category: nestjs
+  tags: [cli, generators, scaffolding, project-setup]
 ---
 
-# NestJS CLI Skills
+# NestJS CLI - Code Generation & Project Management
 
-This skill covers the NestJS CLI tool for scaffolding, generating code, and managing NestJS projects.
+## Overview
 
-## Installation
+NestJS CLI (`@nestjs/cli`)는 프로젝트 생성 및 코드 스캐폴딩을 위한 핵심 도구입니다. `nest g`(generate) 명령어로 Controller, Service, Module 등을 일관된 패턴으로 자동 생성합니다.
 
-```bash
-npm install -g @nestjs/cli
-```
+---
 
-## Basic Commands
+## SOP: Step-by-Step Procedures
 
-### Project Creation
+### SOP-1: 새 프로젝트 생성
 
 ```bash
-# Create a new NestJS project
+# 기본 생성 (npm 패키지 매니저, 표준 TS 설정)
 nest new project-name
 
-# Create with stricter TypeScript settings
+# 엄격한 TypeScript 설정 권장
 nest new project-name --strict
 
-# Create with yarn
-nest new project-name --package-manager yarn
-
-# Create with pnpm
+# pnpm 사용
 nest new project-name --package-manager pnpm
+
+# yarn 사용
+nest new project-name --package-manager yarn
 ```
 
-### Code Generation
+**생성된 주요 파일:**
+- `src/main.ts` — 진입점
+- `src/app.module.ts` — 루트 모듈
+- `tsconfig.json` / `nest-cli.json` — 빌드/CLI 설정
 
-The NestJS CLI provides powerful generators to scaffold code:
+### SOP-2: Resource (Controller + Service + Module) 한 번에 생성
 
 ```bash
-# Generate a resource (controller + service + module)
-nest g resource [name] [--dry-run] [--spec] [--flat] [--no-spec] [--crud]
+# 전체 CRUD 리소스 생성 (권장)
+nest g resource users
 
-# Generate a controller
-nest g controller [name] [--dry-run] [--spec] [--flat]
+# 프롬프트 응답 순서:
+# 1. Transport layer → REST API (Enter)
+# 2. CRUD entry points? → Yes (y)
+# 3. DTO import source → class-transformer, class-validator 선택
 
-# Generate a service
-nest g service [name] [--dry-run] [--spec] [--flat]
-
-# Generate a module
-nest g module [name] [--dry-run] [--flat]
-
-# Generate a provider
-nest g provider [name] [--dry-run] [--spec] [--flat]
-
-# Generate a class
-nest g class [name] [--dry-run] [--spec] [--flat]
-
-# Generate a gateway (WebSockets)
-nest g gateway [name] [--dry-run] [--spec] [--flat]
-
-# Generate a filter
-nest g filter [name] [--dry-run] [--spec]
-
-# Generate a pipe
-nest g pipe [name] [--dry-run] [--spec] [--flat]
-
-# Generate an interceptor
-nest g interceptor [name] [--dry-run] [--spec] [--flat]
-
-# Generate a guard
-nest g guard [name] [--dry-run] [--spec] [--flat]
-
-# Generate a middleware
-nest g middleware [name] [--dry-run] [--spec] [--flat]
-
-# Generate a resolver (GraphQL)
-nest g resolver [name] [--dry-run] [--spec] [--flat]
-
-# Generate a subscription (GraphQL)
-nest g subscription [name] [--dry-run] [--spec] [--flat]
+# 모듈 안에 flat 구조로 생성
+nest g resource modules/orders --flat
 ```
 
-### Generator Options
+**생성되는 파일들:**
+- `users.controller.ts` — CRUD 엔드포인트
+- `users.service.ts` — CRUD 메서드
+- `users.module.ts` — 모듈 정의
+- `dto/create-user.dto.ts`, `dto/update-user.dto.ts` — 검증 DTO
+- `entities/user.entity.ts` — 엔티티 (TypeORM 사용 시)
+- `*.spec.ts` — 테스트 파일
 
-- `--dry-run` - Show what would be generated without creating files
-- `--spec` - Generate spec files (default: true)
-- `--no-spec` - Don't generate spec files
-- `--flat` - Generate files in the same directory (don't create subdirectory)
-- `--crud` - Generate CRUD endpoints (only with `nest g resource`)
+### SOP-3: 개별 코드 생성
 
-### CRUD Generator
+| 명령어 | 설명 | 옵션 |
+|--------|------|------|
+| `nest g controller name` | Controller | `--flat`, `--no-spec` |
+| `nest g service name` | Service (Provider) | `--flat`, `--no-spec` |
+| `nest g module name` | Module | `--flat` |
+| `nest g provider name` | 일반 Provider | `--flat`, `--no-spec` |
+| `nest g class name` | 클래스 | `--flat` |
+| `nest g interface name` | 인터페이스 | `--flat` |
+| `nest g guard name` | Guard (인증/인가) | `--flat` |
+| `nest g interceptor name` | Interceptor | `--flat` |
+| `nest g pipe name` | Pipe (변환/검증) | `--flat` |
+| `nest g filter name` | Exception Filter | `--no-spec` |
+| `nest g middleware name` | Middleware | `--flat` |
+| `nest g gateway name` | WebSocket Gateway | `--flat`, `--no-spec` |
 
-The `nest g resource` command generates a full CRUD resource:
+**옵션 설명:**
+- `--dry-run`: 파일 생성 없이 출력만 확인
+- `--spec`: 테스트 파일 생성 (기본값: true)
+- `--no-spec`: 테스트 파일 안 만듦
+- `--flat`: 서브디렉토리 없이 현재 폴더에 직접 생성
 
-```bash
-nest g resource pets
-
-# Prompts:
-# ? What transport layer do you use? [Enter] REST API
-# ? Do you want to generate CRUD entry points? (y) Yes
-# ? What protocol does this package use? (graphql)
-# ? Where should the DTOs be imported from? (@nestjs/mapped-types)
-# ? Which database platform do you use? (typeorm)
-# ? Schematic options (comma separated): (flat)
-```
-
-This generates:
-- Controller with CRUD endpoints
-- Service with CRUD methods
-- Module
-- DTOs with validation
-- Entity (if using TypeORM)
-- Tests
-
-## Project Commands
-
-### Development
+### SOP-4: 개발/빌드/테스트 명령어
 
 ```bash
-# Start development server with watch mode
-npm run start
+# 개발 서버 (watch 모드)
+npm run start          # 또는 nest start --watch
 
-# Start development server with watch mode (shorthand)
+# 핫 리로드 (nodemon)
 npm run start:dev
 
-# Start production mode
-npm run start:prod
+# 프로덕션 빌드
+npm run build          # 또는 nest build
 
-# Start with SWC compiler (20x faster builds)
-npm run start -- -b swc
+# SWC 컴파일러 사용 (20배 빠름)
+nest build -b swc
+nest start --watch -b swc
+
+# 린팅 & 포맷팅
+npm run lint           # ESLint 자동 수정
+npm run format         # Prettier 적용
+
+# 테스트
+npm run test           # 단위 테스트
+npm run test:watch     # watch 모드
+npm run test:cov       # 코드 커버리지
+npm run test:e2e       # E2E 테스트
 ```
 
-### Building
-
-```bash
-# Build the project
-npm run build
-
-# Build with SWC compiler
-npm run build -- -b swc
-```
-
-### Code Quality
-
-```bash
-# Lint and autofix with ESLint
-npm run lint
-
-# Format with Prettier
-npm run format
-```
-
-### Testing
-
-```bash
-# Run unit tests
-npm run test
-
-# Run unit tests in watch mode
-npm run test:watch
-
-# Run unit tests in coverage mode
-npm run test:cov
-
-# Run e2e tests
-npm run test:e2e
-
-# Run all tests
-npm run test:e2e
-```
-
-### Additional Commands
-
-```bash
-# Display help
-nest --help
-
-# Show version
-nest -v
-
-# Create an application
-nest new
-
-# Create a library
-nest generate library [name]
-
-# Build a library
-nest build [library-name]
-
-# Publish a library
-nest publish [library-name]
-```
-
-## tsconfig.json Configuration
-
-The NestJS CLI generates a `tsconfig.json` with useful settings:
-
-```json
-{
-  "compilerOptions": {
-    "module": "commonjs",
-    "declaration": true,
-    "removeComments": true,
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
-    "allowSyntheticDefaultImports": true,
-    "target": "ES2021",
-    "sourceMap": true,
-    "outDir": "./dist",
-    "baseUrl": "./",
-    "incremental": true,
-    "skipLibCheck": true,
-    "strictNullChecks": false,
-    "noImplicitAny": false,
-    "strictBindCallApply": false,
-    "forceConsistentCasingInFileNames": false,
-    "noFallthroughCasesInSwitch": false
-  }
-}
-```
-
-## nest-cli.json Configuration
-
-Customize the CLI behavior with `nest-cli.json`:
+### SOP-5: nest-cli.json 설정 커스터마이징
 
 ```json
 {
@@ -250,17 +137,40 @@ Customize the CLI behavior with `nest-cli.json`:
 }
 ```
 
+**주요 설정:**
+- `webpack: true` → Webpack 컴파일러 사용 (디버깅 용이)
+- `deleteOutDir: true` → 빌드 전 dist 폴더 삭제
+- Swagger 플러그인 → 자동 OpenAPI 문서 생성
+
+---
+
+## Tool Integration
+
+| 작업 | 도구 | 예시 |
+|------|------|------|
+| 프로젝트 구조 확인 | `list_dir` / `read_file` | `src/`, `nest-cli.json` 읽기 |
+| CLI 명령 실행 | `run_command` | `nest g resource orders --flat` |
+| 기존 파일 패턴 탐색 | `search_files` | `search_files("nest g", "*.md")` |
+| 빌드 확인 | `run_command` | `npm run build && list_dir dist/` |
+
+---
+
+## Anti-Patterns & Guardrails
+
+- ❌ **CLI 생성 코드 맹신 금지** — `nest g resource --crud`가 생성한 코드는 템플릿일 뿐, 프로젝트 요구사항에 맞게 수정해야 함
+- ❌ **프로덕션에서 `synchronize: true` 사용 금지** — DB 스키마 자동 동기화는 데이터 손실 위험이 있음. 마이그레이션 도구 사용
+- ❌ **전역 CLI 설치(`npm i -g`)는 팀 협업 시 버전 충돌 가능** — `npx nest` 또는 프로젝트 로컬 의존성으로 실행 권장
+
 ## Best Practices
 
-1. **Use generators** - Leverage `nest g` commands for consistent code structure
-2. **Feature modules** - Group related code into feature modules
-3. **CRUD generator** - Use `nest g resource` for quick CRUD API scaffolding
-4. **Linting** - Run `npm run lint` before committing
-5. **Testing** - Always generate tests with `--spec` flag
-6. **SWC** - Use SWC for faster builds in development
+1. `--strict` 옵션으로 TypeScript 엄격 모드 활성화
+2. Feature Module 패턴: 각 도메인별로 별도 모듈 생성
+3. `nest g resource`로 초기 스캐폴딩 후 커스터마이징
+4. SWC 컴파일러로 개발 시 빌드 속도 향상 (`-b swc`)
+5. 린팅/포맷팅을 pre-commit hook에 포함
 
 ## References
 
 - [NestJS CLI Documentation](https://docs.nestjs.com/cli/overview)
 - [NestJS CRUD Generator](https://docs.nestjs.com/recipes/crud-generator)
-- [NestJS Schematics](https://github.com/nestjs/schematics)
+- [NestJS Schematics GitHub](https://github.com/nestjs/schematics)

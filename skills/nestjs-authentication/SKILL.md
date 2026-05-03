@@ -1,34 +1,55 @@
 ---
 name: nestjs-authentication
-description: NestJS authentication strategies including JWT, OAuth, session-based auth, and API keys. Use when implementing authentication, authorization, or security features in NestJS applications.
+description: NestJS authentication strategies including JWT, local login, passport integration, and role-based authorization. Use when implementing user login, token management, or access control in NestJS applications.
 license: MIT
 metadata:
   author: snowmerak
-  version: "1.0"
-  framework: nestjs
-  category: security
+  version: '1.0'
+  category: nestjs
+  tags: [authentication, jwt, passport, guards, authorization]
 ---
 
-# NestJS Authentication Skills
-
-This skill covers authentication and authorization strategies in NestJS applications.
+# NestJS Authentication - JWT, Passport & Authorization Patterns
 
 ## Overview
 
-NestJS provides flexible authentication mechanisms through Passport.js integration and custom strategies.
+NestJS는 `@nestjs/passport`를 통해 Passport.js 전략을 쉽게 통합합니다. 이 스킬은 JWT 기반 인증과 로컬 로그인, 그리고 역할(Role) 기반 인가 패턴을 다룹니다.
 
-## 1. JWT Authentication
+---
 
-### Installation
+## SOP: Step-by-Step Procedures
+
+### SOP-1: 패키지 설치 및 Auth Module 설정
 
 ```bash
-npm install --save @nestjs/jwt @nestjs/passport passport passport-jwt
+npm install @nestjs/jwt @nestjs/passport passport passport-jwt bcryptjs
+npm install -D @types/bcryptjs
 ```
 
-### JWT Strategy
+**AuthModule 구성:**
+```typescript
+@Module({
+  imports: [
+    UsersModule,                             // ← User 서비스 의존성
+    PassportModule.register({ defaultStrategy: 'jwt' }),  // 전역 JWT 전략 설정
+    JwtModule.registerAsync({
+      useFactory: (config: ConfigService) => ({
+        secret: config.get('JWT_SECRET'),
+        signOptions: { expiresIn: config.get('JWT_EXPIRES_IN', '1d') },
+      }),
+      inject: [ConfigService],
+      imports: [ConfigModule],
+    }),
+  ],
+  providers: [AuthService, JwtStrategy, LocalStrategy],
+  exports: [AuthService, JwtStrategy, PassportModule], // ← 다른 모듈에서 사용 가능
+})
+export class AuthModule {}
+```
+
+### SOP-2: JWT Strategy 구현
 
 ```typescript
-// jwt.strategy.ts
 import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
@@ -36,57 +57,92 @@ import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(private configService: ConfigService) {
+  constructor(private config: ConfigService) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(), // ← Authorization: Bearer <token>
       ignoreExpiration: false,
-      secretOrKey: configService.get('JWT_SECRET'),
+      secretOrKey: config.get('JWT_SECRET'),
     });
   }
 
   async validate(payload: any) {
-    return { userId: payload.sub, username: payload.username };
+    return { userId: payload.sub, username: payload.username, role: payload.role };
   }
 }
 ```
 
-### Auth Module
+**⚠️ `validate()`의 반환값이 `req.user`로 자동 주입됩니다.** Payload에 필요한 모든 필드를 포함하세요.
+
+### SOP-3: Auth Guard 생성 및 적용
 
 ```typescript
-// auth.module.ts
-import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
-import { PassportModule } from '@nestjs/passport';
-import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
-import { JwtStrategy } from './jwt.strategy';
-import { UsersModule } from '../users/users.module';
+// jwt-auth.guard.ts — JWT 인증 Guard
+import { Injectable } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 
-@Module({
-  imports: [
-    UsersModule,
-    PassportModule,
-    JwtModule.register({
-      secret: 'your-secret-key',
-      signOptions: { expiresIn: '60s' },
-    }),
-  ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [AuthService],
-})
-export class AuthModule {}
+@Injectable()
+export class JwtAuthGuard extends AuthGuard('jwt') {}
+
+// roles.guard.ts — 역할 기반 인가 Guard
+@Injectable()
+export class RolesGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const requiredRoles = Reflector.get<string[]>('roles', context.getHandler());
+    if (!requiredRoles) return true; // 데코레이터 없으면 통과
+
+    const user = context.switchToHttp().getRequest().user;
+    return requiredRoles.includes(user.role);
+  }
+}
 ```
 
-### Auth Service
+**적용:**
+```typescript
+// 메서드 레벨
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('admin')                        // ← 커스텀 데코레이터로 역할 정의
+@Get() findAllAdmins() {}
+
+// 컨트롤러 레벨 (모든 라우트 공통)
+@UseGuards(JwtAuthGuard)
+@Controller('cats') class CatsController {}
+
+// 글로벌 — main.ts에서 설정 시 login/register 등 공개 엔드포인트는 별도 처리 필요
+app.useGlobalGuards(new JwtAuthGuard());
+```
+
+### SOP-4: Public 데코레이터 (공개 엔드포인트용)
+
+전역 Guard를 적용했을 때 로그인/회원가입 라우트를 제외하려면 `SKIP_AUTH` 메타데이터 패턴을 사용하세요.
 
 ```typescript
-// auth.service.ts
-import { Injectable } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { UsersService } from '../users/users.service';
-import { LoginDto } from './dto/login.dto';
+// public.decorator.ts
+import { SetMetadata } from '@nestjs/common';
+export const IS_PUBLIC_KEY = 'isPublic';
+export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 
+// public.guard.ts — AuthGuard 상속 + 예외 처리
+@Injectable()
+export class AuthGuard extends PassportAuthGuard('jwt') {
+  constructor(private reflector: Reflector) { super(); }
+
+  canActivate(context: ExecutionContext): boolean {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) return true; // 공개 라우트면 인증 스킵
+    return super.canActivate(context);
+  }
+}
+
+// 사용: @Public() 데코레이터 붙인 라우트는 JWT 토큰 불필요
+@Public() @Post('login') login(@Body() dto) { /* ... */ }
+```
+
+### SOP-5: AuthService 구현 (로그인 + 회원가입)
+
+```typescript
 @Injectable()
 export class AuthService {
   constructor(
@@ -94,315 +150,64 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async validateUser(username: string, pass: string): Promise<any> {
-    const user = await this.usersService.findOne(username);
-    if (user && user.password === pass) {
-      const { password, ...result } = user;
+  async validateUser(username: string, password: string): Promise<User | null> {
+    const user = await this.usersService.findByUsername(username);
+    if (user && await bcrypt.compare(password, user.password)) {
+      const { password: _, ...result } = user; // ← 비밀번호 제외!
       return result;
     }
     return null;
   }
 
-  async login(loginDto: LoginDto) {
-    const user = await this.validateUser(loginDto.username, loginDto.password);
-    if (user) {
-      const payload = { username: user.username, sub: user.userId };
-      return {
-        access_token: this.jwtService.sign(payload),
-      };
-    }
-    return null;
+  async login(dto: LoginDto): Promise<{ access_token: string }> {
+    const user = await this.validateUser(dto.username, dto.password);
+    if (!user) throw new UnauthorizedException('Invalid credentials');
+
+    const payload = { username: user.username, sub: user.id, role: user.role };
+    return { access_token: this.jwtService.sign(payload) };
   }
 
-  async register(registerDto: any) {
-    const user = await this.usersService.create(registerDto);
-    const payload = { username: user.username, sub: user.userId };
-    return {
-      access_token: this.jwtService.sign(payload),
-    };
-  }
-}
-```
-
-### Auth Controller
-
-```typescript
-// auth.controller.ts
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
-import { AuthService } from './auth.service';
-import { LocalAuthGuard } from './local-auth.guard';
-import { Public } from './public.decorator';
-
-@Controller('auth')
-export class AuthController {
-  constructor(private authService: AuthService) {}
-
-  @Public()
-  @UseGuards(LocalAuthGuard)
-  @Post('login')
-  async login(@Body() loginDto: any) {
-    return this.authService.login(loginDto);
-  }
-
-  @Public()
-  @Post('register')
-  async register(@Body() registerDto: any) {
-    return this.authService.register(registerDto);
-  }
-}
-```
-
-## 2. Local Authentication Strategy
-
-### Local Strategy
-
-```typescript
-// local.strategy.ts
-import { Strategy } from 'passport-local';
-import { PassportStrategy } from '@nestjs/passport';
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { AuthService } from '../auth/auth.service';
-
-@Injectable()
-export class LocalStrategy extends PassportStrategy(Strategy) {
-  constructor(private authService: AuthService) {
-    super();
-  }
-
-  async validate(username: string, password: string): Promise<any> {
-    const user = await this.authService.validateUser(username, password);
-    if (!user) {
-      throw new UnauthorizedException();
-    }
-    return user;
-  }
-}
-```
-
-### Local Auth Guard
-
-```typescript
-// local-auth.guard.ts
-import { Injectable } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
-
-@Injectable()
-export class LocalAuthGuard extends AuthGuard('local') {}
-```
-
-## 3. JWT Auth Guard
-
-```typescript
-// jwt-auth.guard.ts
-import { Injectable } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
-
-@Injectable()
-export class JwtAuthGuard extends AuthGuard('jwt') {}
-```
-
-### Applying Guards
-
-```typescript
-// cats.controller.ts
-import { Controller, Get, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-
-@Controller('cats')
-@UseGuards(JwtAuthGuard)
-export class CatsController {
-  @Get()
-  findAll() {
-    return 'All cats';
-  }
-}
-```
-
-## 4. Roles Guard
-
-```typescript
-// roles.guard.ts
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-
-@Injectable()
-export class RolesGuard implements CanActivate {
-  constructor(private reflector: Reflector) {}
-
-  canActivate(context: ExecutionContext): boolean {
-    const roles = this.reflector.get<string[]>('roles', context.getHandler());
-    if (!roles) {
-      return true;
-    }
-    const request = context.switchToHttp().getRequest();
-    const user = request.user;
-    return roles.some((role) => user.roles?.includes(role));
-  }
-}
-```
-
-### Roles Decorator
-
-```typescript
-// roles.decorator.ts
-import { SetMetadata } from '@nestjs/common';
-
-export const Roles = (...roles: string[]) => SetMetadata('roles', roles);
-```
-
-### Usage
-
-```typescript
-@Get('admin')
-@Roles('admin')
-adminOnly() {
-  return 'Admin only';
-}
-```
-
-## 5. OAuth Strategies
-
-### Google Strategy
-
-```typescript
-// google.strategy.ts
-import { PassportStrategy } from '@nestjs/passport';
-import { Strategy, VerifyCallback } from 'passport-google-oauth20';
-import { Injectable, ConfigService } from '@nestjs/common';
-
-@Injectable()
-export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
-  constructor(private configService: ConfigService) {
-    super({
-      clientID: configService.get('GOOGLE_CLIENT_ID'),
-      clientSecret: configService.get('GOOGLE_CLIENT_SECRET'),
-      callbackURL: configService.get('GOOGLE_CALLBACK_URL'),
-      scope: ['email', 'profile'],
+  async register(dto: RegisterDto): Promise<{ access_token: string }> {
+    const user = await this.usersService.create({
+      ...dto,
+      password: await bcrypt.hash(dto.password, 10), // ← 해싱 필수!
     });
-  }
-
-  async validate(
-    accessToken: string,
-    refreshToken: string,
-    profile: any,
-    done: VerifyCallback,
-  ): Promise<any> {
-    const { name, emails } = profile;
-    const user = {
-      email: emails[0].value,
-      firstName: name.givenName,
-      lastName: name.familyName,
-      accessToken,
-    };
-    done(null, user);
+    const payload = { username: user.username, sub: user.id, role: user.role };
+    return { access_token: this.jwtService.sign(payload) };
   }
 }
 ```
 
-### Facebook Strategy
+---
 
-```typescript
-// facebook.strategy.ts
-import { PassportStrategy } from '@nestjs/passport';
-import { Strategy } from 'passport-facebook';
-import { Injectable, ConfigService } from '@nestjs/common';
+## Tool Integration
 
-@Injectable()
-export class FacebookStrategy extends PassportStrategy(Strategy, 'facebook') {
-  constructor(private configService: ConfigService) {
-    super({
-      clientID: configService.get('FACEBOOK_APP_ID'),
-      clientSecret: configService.get('FACEBOOK_APP_SECRET'),
-      callbackURL: configService.get('FACEBOOK_CALLBACK_URL'),
-      scope: 'email',
-    });
-  }
+| 작업 | 도구 | 예시 |
+|------|------|------|
+| Guard 파일 탐색 | `search_files` | `search_files("CanActivate", "*.guard.ts")` |
+| JWT 설정 확인 | `read_file` | `.env`, `auth.module.ts`의 secret/expiresIn |
+| 전략 파일 확인 | `list_dir` | `src/auth/strategies/` 폴더 구조 |
 
-  async validate(accessToken: string, refreshToken: string, profile: any) {
-    const { name, emails } = profile;
-    return {
-      email: emails[0].value,
-      firstName: name.givenName,
-      lastName: name.familyName,
-      accessToken,
-    };
-  }
-}
-```
+---
 
-## 6. API Key Authentication
+## Anti-Patterns & Guardrails
 
-```typescript
-// api-key.guard.ts
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
-import { Observable } from 'rxjs';
+- ❌ **평문 비밀번호 저장 절대 금지** — 항상 `bcrypt.hash()` 사용. 비교 시 `bcrypt.compare()` 필수
+- ❌ **JWT Payload에 민감 정보 포함 금지** — ID/Role 정도만 넣으세요. 전체 User 객체 넣지 마세요
+- ❌ **`validateUser`에서 비밀번호 리턴 금지** — `const { password, ...result } = user;`로 반드시 제거
+- ❌ **Access Token 만료기간 너무 길게 설정 금지** — 15분~1시간 권장. Refresh Token 패턴 사용
+- ❌ **Global Guard 적용 시 Public 엔드포인트 처리 안 함** — `@Public()` 데코레이터 + `IS_PUBLIC_KEY` 체크 필수
 
-@Injectable()
-export class ApiKeyGuard implements CanActivate {
-  canActivate(
-    context: ExecutionContext,
-  ): boolean | Promise<boolean> | Observable<boolean> {
-    const request = context.switchToHttp().getRequest();
-    const apiKey = request.headers['x-api-key'];
-    return apiKey === process.env.API_KEY;
-  }
-}
-```
+## Best Practices
 
-## 7. Public Route Decorator
-
-```typescript
-// public.decorator.ts
-import { SetMetadata } from '@nestjs/common';
-
-export const IS_PUBLIC_KEY = 'isPublic';
-export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
-```
-
-### Combined Auth Guard
-
-```typescript
-// auth.guard.ts
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { JwtAuthGuard } from './jwt-auth.guard';
-import { RolesGuard } from './roles.guard';
-import { IS_PUBLIC_KEY } from './public.decorator';
-
-@Injectable()
-export class AuthGuard extends CanActivate {
-  constructor(private reflector: Reflector) {
-    super();
-  }
-
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    if (isPublic) {
-      return true;
-    }
-
-    const jwtGuard = new JwtAuthGuard();
-    return jwtGuard.canActivate(context);
-  }
-}
-```
-
-## Security Best Practices
-
-1. **Use environment variables** for secrets
-2. **Set appropriate token expiration** (access: 15min, refresh: 7days)
-3. **Implement refresh tokens** for long-lived sessions
-4. **Use HTTPS** in production
-5. **Validate all inputs** before processing
-6. **Rate limit** authentication endpoints
-7. **Log authentication events** for audit trails
-8. **Use strong passwords** with bcrypt hashing
+1. JWT Secret은 환경 변수에서 관리 (`JWT_SECRET`)
+2. 비밀번호 항상 bcrypt 해싱 (라운드 10~12 권장)
+3. Role 기반 인가는 `RolesGuard` + `@Roles('admin')` 패턴
+4. Refresh Token으로 Access Token 갱신 (리프레시 토큰 별도 저장소 관리)
+5. 공개 엔드포인트는 `@Public()` 데코레이터로 명시
 
 ## References
 
-- [NestJS JWT Documentation](https://docs.nestjs.com/security/authentication)
-- [Passport.js Documentation](https://www.passportjs.org)
-- [JWT.io](https://jwt.io)
+- [NestJS Authentication Docs](https://docs.nestjs.com/security/authentication)
+- [Passport.js Documentation](http://www.passportjs.org)
+- [JWT Best Practices](https://auth0.com/docs/secure/tokens/json-web-tokens)

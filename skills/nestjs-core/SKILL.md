@@ -4,123 +4,106 @@ description: Core NestJS concepts including controllers, modules, routing, and b
 license: MIT
 metadata:
   author: snowmerak
-  version: "1.0"
-  framework: nestjs
-  category: core
+  version: '1.0'
+  category: nestjs
+  tags: [core, fundamentals, controllers, modules, routing]
 ---
 
-# NestJS Core Skills
-
-This skill covers the fundamental concepts of NestJS framework for building efficient, scalable server-side applications.
+# NestJS Core - Fundamentals & Architecture
 
 ## Overview
 
-NestJS is a progressive Node.js framework for building efficient, scalable server-side applications. It uses TypeScript and combines elements of OOP, FP, and FRP. Under the hood, NestJS uses Express (default) or Fastify as the HTTP server platform.
+NestJS is a progressive Node.js framework for building efficient, scalable server-side applications. It uses TypeScript and combines OOP, FP, and FRP paradigms. Under the hood, NestJS uses Express (default) or Fastify as the HTTP platform.
 
-## Key Concepts
+Every NestJS app consists of **Modules** → **Controllers** → **Providers**. This is the foundation everything else builds on.
 
-### 1. Modules
+---
 
-Modules are the foundation of NestJS architecture. Each application has at least one module (the root module).
+## SOP: Step-by-Step Procedures
 
-```typescript
-import { Module } from '@nestjs/common';
-import { CatsController } from './cats.controller';
-import { CatsService } from './cats.service';
+### SOP-1: 새 NestJS 프로젝트 생성
 
-@Module({
-  controllers: [CatsController],
-  providers: [CatsService],
-})
-export class AppModule {}
+1. `nest new project-name` 실행 (또는 `nest new project-name --strict`으로 엄격한 TS 설정)
+2. 패키지 매니저 지정 필요시 `--package-manager pnpm` 추가
+3. 생성된 프로젝트 구조 확인:
+   - `src/main.ts` — 부트스트랩 진입점
+   - `src/app.module.ts` — 루트 모듈
+4. `npm run start:dev`로 개발 서버 실행
+
+```bash
+nest new my-app --strict
+cd my-app && npm run start:dev
 ```
 
-**Module metadata:**
-- `controllers`: Controllers belonging to this module
-- `providers`: Providers (services, repositories, factories) belonging to this module
-- `imports`: Other modules that this module needs
-- `exports`: Providers exported from this module (made available to importing modules)
+### SOP-2: Feature Module + Controller 생성
 
-### 2. Controllers
+1. `nest g module modules/users` → UsersModule 생성
+2. `nest g controller modules/users --flat` → UsersController 생성 (`--flat`: 서브디렉토리 안 만듦)
+3. `nest g service modules/users --flat` → UserService 생성
+4. `UsersModule`에 controller/service 등록
 
-Controllers are responsible for handling incoming requests and returning responses to the client.
+```bash
+# Agent 도구 활용
+run_command: "nest g module modules/users"
+run_command: "nest g controller modules/users --flat"
+run_command: "nest g service modules/users --flat"
+```
+
+### SOP-3: Controller에서 라우트 정의
+
+1. 클래스에 `@Controller('prefix')` 데코레이터 적용
+2. 각 메서드에 HTTP 메서드 데코레이터(`@Get`, `@Post`, 등) 추가
+3. 파라미터 데코레이터로 요청 데이터 접근 (`@Body`, `@Param`, `@Query`)
 
 ```typescript
-import { Controller, Get, Post, Body, Param, Delete } from '@nestjs/common';
-
 @Controller('cats')
 export class CatsController {
-  @Post()
-  create(@Body() createCatDto: CreateCatDto) {
-    return 'This action adds a new cat';
-  }
+  constructor(private readonly catsService: CatsService) {}
 
-  @Get()
-  findAll() {
-    return `This action returns all cats`;
-  }
+  @Post()                           // POST /cats
+  create(@Body() dto: CreateCatDto) { return this.catsService.create(dto); }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return `This action returns a cat with ID: ${id}`;
-  }
+  @Get()                            // GET /cats
+  findAll() { return this.catsService.findAll(); }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return `This action removes a cat with ID: ${id}`;
-  }
+  @Get(':id')                       // GET /cats/:id
+  findOne(@Param('id') id: string) { return this.catsService.findOne(id); }
 }
 ```
 
-**HTTP Method Decorators:**
-- `@Get()` - Handle GET requests
-- `@Post()` - Handle POST requests
-- `@Put()` - Handle PUT requests
-- `@Delete()` - Handle DELETE requests
-- `@Patch()` - Handle PATCH requests
-- `@Options()` - Handle OPTIONS requests
-- `@Head()` - Handle HEAD requests
-- `@All()` - Handle all HTTP methods
+### SOP-4: Provider (Service) 작성
 
-**Request Parameter Decorators:**
-- `@Request()` / `@Req()` - Access the request object
-- `@Response()` / `@Res()` - Access the response object
-- `@Next()` - Access the next middleware function
-- `@Session()` - Access the session object
-- `@Param(key?: string)` - Access route parameters
-- `@Body(key?: string)` - Access request body
-- `@Query(key?: string)` - Access query parameters
-- `@Headers(name?: string)` - Access request headers
-- `@Ip()` - Access the client IP
-
-### 3. Providers (Services)
-
-Providers are classes that can be injected with dependencies using constructor injection.
+1. `@Injectable()` 데코레이터로 클래스 마크
+2. 생성자 인젝션으로 의존성 받기
+3. 비즈니스 로직 구현 (Controller는 얇게 유지)
 
 ```typescript
-import { Injectable } from '@nestjs/common';
-import { CreateCatDto } from './dto/create-cat.dto';
-
 @Injectable()
 export class CatsService {
-  private readonly cats: string[] = [];
-
-  create(cat: CreateCatDto) {
-    this.cats.push(cat.name);
-  }
-
-  findAll() {
-    return this.cats;
-  }
+  create(dto: CreateCatDto) { /* ... */ }
+  findAll() { /* ... */ }
 }
 ```
 
-**Common Provider Decorators:**
-- `@Injectable()` - Mark a class as a provider
-- `@Injectable({ scope: Scope.REQUEST })` - Scoped providers
-- `@Injectable({ transient: true })` - Transient providers
+### SOP-5: Module 구성
 
-### 4. Application Entry Point
+1. `@Module()` 데코레이터에 메타데이터 정의:
+   - `controllers`: 이 모듈의 컨트롤러 목록
+   - `providers`: 서비스/리포지토리 등
+   - `imports`: 의존하는 다른 모듈
+   - `exports`: 외부 모듈에서 사용할 수 있도록 내보낼 프로바이더
+
+```typescript
+@Module({
+  imports: [DatabaseModule],
+  controllers: [CatsController],
+  providers: [CatsService],
+  exports: [CatsService],           // ← importing 모듈에서 사용 가능
+})
+export class CatsModule {}
+```
+
+### SOP-6: 애플리케이션 부트스트랩 (`main.ts`)
 
 ```typescript
 import { NestFactory } from '@nestjs/core';
@@ -128,117 +111,43 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  // 또는 Fastify 사용: new FastifyAdapter()
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();
 ```
 
-**Platform Options:**
-- Express (default): `NestFactory.create(AppModule)`
-- Fastify: `NestFactory.create(AppModule, { adapter: new FastifyAdapter() })`
+---
 
-## Project Structure
+## Tool Integration
 
-A typical NestJS project structure:
+| 작업 | 도구 | 예시 |
+|------|------|------|
+| 프로젝트 구조 파악 | `list_dir` / `read_file` | `src/` 내용 확인 |
+| 기존 패턴 탐색 | `search_files` | `search_files("@Controller", "*.controller.ts")` |
+| 코드 생성 | `run_command` | `nest g controller users --flat` |
+| 서버 실행 | `run_command` | `npm run start:dev` |
 
-```
-src/
-├── common/           # Shared utilities, guards, pipes, etc.
-├── config/           # Configuration files
-├── modules/          # Feature modules
-│   ├── cats/
-│   │   ├── cats.controller.ts
-│   │   ├── cats.service.ts
-│   │   ├── dto/
-│   │   ├── interfaces/
-│   │   └── cats.module.ts
-│   └── users/
-├── main.ts           # Application entry point
-└── app.module.ts     # Root module
-```
+---
+
+## Anti-Patterns & Guardrails
+
+- ❌ **Controller에 비즈니스 로직 넣지 마세요** — Controller는 요청/응답만 처리하고 Service로 위임하세요
+- ❌ **Module에서 providers를 export하지 않으면 다른 모듈에서 접근 불가** — 꼭 `exports` 명시
+- ❌ **`@Res()` 데코레이터 남용 금지** — NestJS 표준 응답 방식(리턴 값)을 우선 사용하세요. `passthrough: true`가 필요한 경우만 예외적으로 사용
+- ❌ **모든 컨트롤러를 `AppModule`에 등록하지 마세요** — Feature Module로 분리하여 유지보수성 확보
 
 ## Best Practices
 
-1. **Keep controllers thin** - Delegate business logic to services
-2. **Use DTOs** - Validate and serialize request/response data
-3. **Module organization** - Group related functionality into feature modules
-4. **Dependency injection** - Use constructor injection for dependencies
-5. **Error handling** - Use exception filters for consistent error responses
-6. **Environment variables** - Use ConfigModule for configuration management
-
-## Routing
-
-Route paths are determined by combining the controller prefix with the method decorator path:
-
-```typescript
-@Controller('cats')
-export class CatsController {
-  @Get()           // Maps to GET /cats
-  @Get('breed')    // Maps to GET /cats/breed
-  @Get(':id')      // Maps to GET /cats/:id
-}
-```
-
-## Response Handling
-
-**Standard approach (recommended):**
-- Objects/arrays are automatically serialized to JSON
-- Primitives are sent as-is
-- Status code is 200 by default (201 for POST)
-
-**Library-specific approach:**
-- Use `@Res()` decorator to access native response object
-- Set `passthrough: true` to use both approaches together
-
-## Status Codes
-
-Override default status codes with `@HttpCode()`:
-
-```typescript
-@Post()
-@HttpCode(204)  // No Content
-create() {
-  return;
-}
-```
-
-## Response Headers
-
-Set custom response headers with `@Header()`:
-
-```typescript
-@Get()
-@Header('Cache-Control', 'none')
-findAll() {
-  return [];
-}
-```
-
-## Redirection
-
-Redirect responses with `@Redirect()`:
-
-```typescript
-@Get('docs')
-@Redirect('https://docs.nestjs.com', 302)
-getDocs(@Query('version') version: string) {
-  if (version === '5') {
-    return { url: 'https://docs.nestjs.com/v5/' };
-  }
-}
-```
-
-## Route Wildcards
-
-Support pattern-based routes:
-
-```typescript
-@Get('abcd/*')  // Matches abcd/, abcd/123, abcd/abc, etc.
-findAll() {}
-```
+1. Controller는 얇게, Service에는 비즈니스 로직을
+2. DTO 사용: 요청/응답 데이터 검증 및 직렬화
+3. Feature Module로 관련 기능 그룹화
+4. 생성자 인젝션 사용 (프로퍼티 인젝션 금지)
+5. `ConfigModule`으로 환경 변수 관리
 
 ## References
 
-- [NestJS Documentation](https://docs.nestjs.com)
+- [NestJS Docs — Fundamentals](https://docs.nestjs.com/fundamentals/getting-started)
+- [NestJS Docs — Controllers](https://docs.nestjs.com/controllers)
+- [NestJS Docs — Providers](https://docs.nestjs.com/providers)
 - [NestJS GitHub](https://github.com/nestjs/nest)
-- [NestJS Official Courses](https://courses.nestjs.com)
