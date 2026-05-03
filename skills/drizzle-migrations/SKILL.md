@@ -30,33 +30,79 @@ npx drizzle-kit init
 This creates `drizzle.config.ts` or `drizzle.config.json`:
 
 ```typescript
-// drizzle.config.ts
+// drizzle.config.ts - Basic configuration
 import { defineConfig } from 'drizzle-kit';
 
 export default defineConfig({
+  dialect: 'postgresql', // 'mysql' | 'sqlite' | 'turso' | 'singlestore' | 'mssql' | 'cockroachdb'
   schema: './src/schema/index.ts',
-  out: './src/drizzle',
-  dialect: 'postgresql', // 'mysql' | 'sqlite'
-  dbCredentials: {
-    url: process.env.DATABASE_URL!,
-  },
-  verbose: true,
-  strict: true,
+  out: './drizzle',
 });
 ```
 
-```json
-// drizzle.config.json
-{
-  "schema": "./src/schema/index.ts",
-  "out": "./src/drizzle",
-  "dialect": "postgresql",
-  "dbCredentials": {
-    "url": "postgresql://user:password@localhost:5432/dbname"
+### drizzle.config.ts - Full Configuration (v0.25+)
+
+```typescript
+import { defineConfig } from 'drizzle-kit';
+
+export default defineConfig({
+  // Database dialect: 'postgresql' | 'mysql' | 'sqlite' | 'turso' | 'singlestore' | 'mssql' | 'cockroachdb'
+  dialect: 'postgresql',
+  
+  // Schema file(s) - supports glob patterns
+  schema: './src/schema/index.ts',
+  // Or multiple files:
+  // schema: ['./src/schema/users.ts', './src/schema/posts.ts'],
+  // Or glob pattern:
+  // schema: './src/schema/**/*.ts',
+  
+  // Output directory for migration files (default: 'drizzle')
+  out: './drizzle',
+  
+  // Driver for special database vendors (optional)
+  // 'aws-data-api' | 'd1-http' | 'pglite'
+  driver: 'pglite',
+  
+  // Database connection credentials
+  dbCredentials: {
+    url: process.env.DATABASE_URL!,
+    // Or for AWS Data API:
+    // database: 'database',
+    // resourceArn: 'arn:aws:rds...',
+    // secretArn: 'arn:aws:secretsmanager...',
   },
-  "verbose": true,
-  "strict": true
-}
+  
+  // Migration-specific settings
+  migrations: {
+    prefix: '0000',           // Prefix for migration folders (default: timestamp)
+    table: '__drizzle_migrations__',  // Migration tracking table name
+    schema: 'public',         // Schema for migration table
+  },
+  
+  // Introspection settings
+  introspect: {
+    casing: 'camel',          // 'camel' | 'pascal' - controls generated property names
+  },
+  
+  // Filter settings
+  tablesFilter: '*',          // Table name filter (glob pattern)
+  schemaFilter: 'public',     // Schema name filter
+  extensionsFilters: ['postgis'], // Extension filters
+  
+  // Entity settings for selective generation
+  entities: {
+    roles: {
+      provider: '',           // Provider name
+      exclude: [],            // Exclude tables
+      include: [],            // Include only these tables
+    },
+  },
+  
+  // Debug options
+  breakpoints: true,          // Generate breakpoint comments in SQL
+  strict: true,               // Strict mode for schema validation
+  verbose: true,              // Verbose output
+});
 ```
 
 ### Package.json Scripts
@@ -68,10 +114,10 @@ export default defineConfig({
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:pull": "drizzle-kit pull",
-    "db:drop": "drizzle-kit drop",
+    "db:check": "drizzle-kit check",
+    "db:up": "drizzle-kit up",
     "db:studio": "drizzle-kit studio",
-    "db:validate": "drizzle-kit validate",
-    "db:introspect": "drizzle-kit introspect"
+    "db:export": "drizzle-kit export"
   }
 }
 ```
@@ -89,20 +135,6 @@ npx drizzle-kit generate --config=drizzle.config.ts
 
 # Specify output directory
 npx drizzle-kit generate --out=./migrations
-```
-
-Generated migration files example:
-
-```typescript
-// 0001_initial_migration.sql
-CREATE TABLE IF NOT EXISTS "users" (
-  "id" serial PRIMARY KEY,
-  "name" varchar(255) NOT NULL,
-  "email" varchar(255) UNIQUE NOT NULL,
-  "created_at" timestamp DEFAULT now() NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS "users_email_idx" ON "users"("email");
 ```
 
 ### Apply Migrations
@@ -136,103 +168,84 @@ npx drizzle-kit push --force
 # Introspect existing database and generate schema files
 npx drizzle-kit pull
 
-# Generate TypeScript types from existing database
-npx drizzle-kit introspect
+# Generate TypeScript types from existing database (same as pull)
+npx drizzle-kit pull
 ```
 
-## Migration Workflow
-
-### Development Workflow
+### Check Migration Status
 
 ```bash
-# 1. Make changes to your schema.ts file
-# 2. Generate migration files
-npm run db:generate
+# Check current migration status and pending changes
+npx drizzle-kit check
 
-# 3. Review the generated SQL in ./drizzle/migrations/
-
-# 4. Apply migrations to local database
-npm run db:migrate
-
-# 5. Verify changes
-npm run db:studio  # Opens Drizzle Studio GUI
+# This compares your schema with the database and reports differences
 ```
 
-### Production Deployment Workflow
+### Upgrade to Latest Migrations
 
 ```bash
-# 1. Generate migration files locally
-npm run db:generate
+# Apply all pending migrations (same as migrate but more explicit)
+npx drizzle-kit up
 
-# 2. Commit migration files to git
-git add ./src/drizzle/migrations/
-git commit -m "feat: add user roles table"
-
-# 3. Deploy code (CI/CD pipeline)
-
-# 4. Apply migrations in production
-npx drizzle-kit migrate --config=drizzle.config.production.ts
+# Useful in CI/CD pipelines to ensure database is up-to-date
 ```
 
-### Production Config Example
+### Export Schema
 
-```typescript
-// drizzle.config.production.ts
-import { defineConfig } from 'drizzle-kit';
+```bash
+# Export schema as SQL or TypeScript
+npx drizzle-kit export
 
-export default defineConfig({
-  schema: './src/schema/index.ts',
-  out: './src/drizzle',
-  dialect: 'postgresql',
-  dbCredentials: {
-    url: process.env.PRODUCTION_DATABASE_URL!,
-  },
-  strict: true,
-  verbose: true,
-});
+# Exports the current database schema to a file
 ```
 
-## Migration File Structure
+## Migration File Structure (v0.25+)
 
 ### Directory Structure
+
+Drizzle Kit v0.25+ uses a **folder-based** migration structure:
 
 ```
 src/
 ├── drizzle/
-│   ├── migrations/
-│   │   ├── _journal.json      # Migration tracking file
-│   │   ├── 0001_initial.sql   # First migration
-│   │   ├── 0002_add_posts.sql # Second migration
-│   │   └── 0003_add_comments.sql
-│   └── schema.ts              # Generated schema (optional)
+│   ├── 202409125510_premium_mister_fear/    # Migration folder (timestamp + name)
+│   │   └── migration.sql                      # SQL file inside the folder
+│   ├── 202409130000_add_posts/               # Another migration folder
+│   │   └── migration.sql
+│   ├── user.ts                               # Schema snapshot file
+│   └── post.ts                               # Schema snapshot file
 ├── schema/
-│   ├── index.ts               # Main schema exports
+│   ├── index.ts                              # Main schema exports
 │   ├── users.ts
 │   └── posts.ts
 ```
 
 ### Journal File (_journal.json)
 
+The journal file tracks migration state:
+
 ```json
 {
-  "version": "5",
+  "version": "7",
   "dialect": "postgresql",
   "entries": [
     {
       "idx": 0,
       "local": true,
-      "forward": ["0001_initial.sql"],
+      "forward": ["202409125510_premium_mister_fear"],
       "backward": []
     },
     {
       "idx": 1,
       "local": true,
-      "forward": ["0002_add_posts.sql"],
-      "backward": ["0001_initial.sql"]
+      "forward": ["202409130000_add_posts"],
+      "backward": ["202409125510_premium_mister_fear"]
     }
   ]
 }
 ```
+
+> **Note**: Migration entries now reference **folder names** instead of individual SQL files.
 
 ## Schema-First vs Migration-First
 
@@ -260,7 +273,7 @@ npx drizzle-kit generate
 Write SQL migrations directly, then introspect:
 
 ```sql
--- migrations/0001_create_users.sql
+-- drizzle/202409125510_create_users/migration.sql
 CREATE TABLE users (
   id SERIAL PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
@@ -272,7 +285,7 @@ CREATE TABLE users (
 Then generate TypeScript schema:
 
 ```bash
-npx drizzle-kit introspect
+npx drizzle-kit pull
 ```
 
 ## Multi-Database Support
@@ -280,12 +293,9 @@ npx drizzle-kit introspect
 ### PostgreSQL
 
 ```typescript
-// drizzle.config.ts
 export default defineConfig({
   dialect: 'postgresql',
-  dbCredentials: {
-    url: process.env.POSTGRES_URL!,
-  },
+  dbCredentials: { url: process.env.POSTGRES_URL! },
 });
 ```
 
@@ -294,9 +304,7 @@ export default defineConfig({
 ```typescript
 export default defineConfig({
   dialect: 'mysql',
-  dbCredentials: {
-    url: process.env.MYSQL_URL!,
-  },
+  dbCredentials: { url: process.env.MYSQL_URL! },
 });
 ```
 
@@ -307,8 +315,35 @@ export default defineConfig({
   dialect: 'sqlite',
   schema: './src/schema/index.ts',
   out: './drizzle',
+  dbCredentials: { url: './dev.db' },
+});
+```
+
+### AWS Data API (PostgreSQL)
+
+```typescript
+export default defineConfig({
+  dialect: 'postgresql',
+  driver: 'aws-data-api',
+  schema: './src/schema.ts',
   dbCredentials: {
-    url: './dev.db',
+    database: 'mydb',
+    resourceArn: 'arn:aws:rds:...',
+    secretArn: 'arn:aws:secretsmanager:...',
+  },
+});
+```
+
+### Cloudflare D1 (SQLite)
+
+```typescript
+export default defineConfig({
+  dialect: 'sqlite',
+  driver: 'd1-http',
+  schema: './src/schema.ts',
+  dbCredentials: {
+    databaseId: 'your-d1-database-id',
+    token: 'your-cloudflare-token',
   },
 });
 ```
@@ -329,26 +364,14 @@ npx drizzle-kit studio
 - Visualize schema relationships
 - Export/import data
 
-### Production Studio Config
-
-```typescript
-export default defineConfig({
-  // ... other config
-  studio: {
-    port: 5270,
-    host: 'localhost',
-  },
-});
-```
-
 ## Rollback Strategies
 
-### Manual Rollback
+### Manual Rollback (Recommended)
 
 1. Create a new migration file that reverses changes:
 
 ```sql
--- migrations/0004_rollback_add_roles.sql
+-- drizzle/20240915_rollback_add_roles/migration.sql
 DROP TABLE IF EXISTS user_roles;
 ALTER TABLE users DROP COLUMN role;
 ```
@@ -359,14 +382,38 @@ ALTER TABLE users DROP COLUMN role;
 npx drizzle-kit migrate
 ```
 
-### Using drizzle-kit Drop (Development Only)
+### Drop All Tables (Development Only)
 
 ```bash
-# Drop all tables (DANGEROUS - development only!)
+# Drop all tables tracked by drizzle-kit (DANGEROUS!)
 npx drizzle-kit drop
 
-# With confirmation
+# With confirmation prompt
 npx drizzle-kit drop --force
+```
+
+## Multiple Configuration Files
+
+You can have multiple config files for different environments:
+
+```bash
+# Development
+npx drizzle-kit generate --config=drizzle.dev.config.ts
+
+# Production
+npx drizzle-kit generate --config=drizzle.prod.config.ts
+```
+
+Project structure:
+
+```
+📦 <project root>
+├── 📂 drizzle/
+├── 📂 src/
+├── 📜 .env
+├── 📜 drizzle.dev.config.ts
+├── 📜 drizzle.prod.config.ts
+└── 📜 package.json
 ```
 
 ## Environment-Specific Configurations
@@ -374,7 +421,7 @@ npx drizzle-kit drop --force
 ### Development
 
 ```typescript
-// drizzle.config.dev.ts
+// drizzle.dev.config.ts
 export default defineConfig({
   dialect: 'postgresql',
   dbCredentials: { url: process.env.DEV_DATABASE_URL! },
@@ -385,7 +432,7 @@ export default defineConfig({
 ### Staging
 
 ```typescript
-// drizzle.config.staging.ts
+// drizzle.staging.config.ts
 export default defineConfig({
   dialect: 'postgresql',
   dbCredentials: { url: process.env.STAGING_DATABASE_URL! },
@@ -396,7 +443,7 @@ export default defineConfig({
 ### Production
 
 ```typescript
-// drizzle.config.prod.ts
+// drizzle.prod.config.ts
 export default defineConfig({
   dialect: 'postgresql',
   dbCredentials: { url: process.env.PROD_DATABASE_URL! },
@@ -466,38 +513,46 @@ CMD ["sh", "-c", "npx drizzle-kit migrate && node dist/main.js"]
 
 1. **Always use migrations in production** - Never use `push` for production databases
 2. **Review generated SQL** - Always check migration files before applying
-3. **Version control migrations** - Commit all migration files to git
+3. **Version control migrations** - Commit all migration folders to git
 4. **Test migrations locally first** - Apply migrations in development/staging before production
 5. **Use strict mode** - Enable `strict: true` for safer schema changes
 6. **Backup before migrations** - Always backup production database before applying migrations
-7. **Name migrations descriptively** - Use meaningful names that explain the change
-8. **Keep migrations idempotent** - Design migrations to be safe to run multiple times
+7. **Use descriptive folder names** - Migration folders should explain the change (e.g., `20240915_add_user_roles`)
+8. **Use multiple config files** - Separate dev/staging/prod configurations for safety
 
 ## Troubleshooting
 
 ### Migration Conflicts
 
 ```bash
-# Check current migration status
-npx drizzle-kit validate
+# Check current migration status and pending changes
+npx drizzle-kit check
 
-# Reset migration tracking (DANGEROUS)
-rm -rf ./drizzle/migrations/_journal.json
-npx drizzle-kit generate
+# Compare schema with database
+npx drizzle-kit generate --dry-run
 ```
 
 ### Schema Drift Detection
 
 ```bash
 # Detect differences between schema and database
-npx drizzle-kit validate
+npx drizzle-kit check
 
-# Generate diff report
-npx drizzle-kit diff
+# Generate migration to see what would change
+npx drizzle-kit generate
+```
+
+### Reset Migration Tracking (DANGEROUS)
+
+```bash
+# Remove journal and regenerate (loses migration history!)
+rm -rf ./drizzle/_journal.json
+npx drizzle-kit generate
 ```
 
 ## References
 
 - [Drizzle Kit Documentation](https://orm.drizzle.team/docs/kit-overview)
+- [drizzle.config.ts Reference](https://orm.drizzle.team/docs/drizzle-config-file)
 - [Migrations Guide](https://orm.drizzle.team/docs/migrate)
 - [Schema First Approach](https://orm.drizzle.team/docs/sql-schema-declaration)

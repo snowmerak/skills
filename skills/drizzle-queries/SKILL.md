@@ -544,3 +544,284 @@ await Promise.all(
 - [Drizzle Query Builder Documentation](https://orm.drizzle.team/docs/select)
 - [Drizzle Joins Documentation](https://orm.drizzle.team/docs/joins)
 - [Drizzle Transactions Documentation](https://orm.drizzle.team/docs/transactions)
+- [Relational Queries Documentation](https://orm.drizzle.team/docs/with-relations)
+
+## Relational Queries API (v2+)
+
+Drizzle ORM v2+ introduces a powerful **Relational Queries** API that automatically fetches related data in a single query.
+
+### Define Relations
+
+```typescript
+import { relations } from 'drizzle-orm';
+import { pgTable, serial, text, integer, timestamp } from 'drizzle-orm/pg-core';
+
+// Define tables
+export const users = pgTable('users', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  email: text('email').unique().notNull(),
+});
+
+export const posts = pgTable('posts', {
+  id: serial('id').primaryKey(),
+  title: text('title').notNull(),
+  content: text('content'),
+  authorId: integer('author_id').references(() => users.id).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Define relations
+export const usersRelations = relations(users, ({ many }) => ({
+  posts: many(posts),
+}));
+
+export const postsRelations = relations(posts, ({ one }) => ({
+  author: one(users, {
+    fields: [posts.authorId],
+    references: [users.id],
+  }),
+}));
+```
+
+### Query with Relations
+
+```typescript
+// Fetch user with all their posts in a single query
+const usersWithPosts = await db.query.users.findMany({
+  with: {
+    posts: true,
+  },
+});
+
+// Result structure:
+// [
+//   {
+//     id: 1,
+//     name: 'John',
+//     email: 'john@example.com',
+//     posts: [
+//       { id: 1, title: 'First Post', content: '...', authorId: 1 },
+//       { id: 2, title: 'Second Post', content: '...', authorId: 1 },
+//     ],
+//   },
+// ]
+
+// Fetch posts with author information
+const postsWithAuthors = await db.query.posts.findMany({
+  with: {
+    author: true,
+  },
+});
+
+// Result structure:
+// [
+//   {
+//     id: 1,
+//     title: 'First Post',
+//     content: '...',
+//     authorId: 1,
+//     author: {
+//       id: 1,
+//       name: 'John',
+//       email: 'john@example.com',
+//     },
+//   },
+// ]
+```
+
+### Filter Relations
+
+```typescript
+// Fetch users with only published posts
+const usersWithPublishedPosts = await db.query.users.findMany({
+  with: {
+    posts: {
+      where: (posts, { eq }) => eq(posts.published, true),
+    },
+  },
+});
+
+// Fetch posts with author who is active
+const postsWithActiveAuthors = await db.query.posts.findMany({
+  with: {
+    author: {
+      where: (users, { eq }) => eq(users.isActive, true),
+    },
+  },
+});
+```
+
+### Nested Relations
+
+```typescript
+// Define more tables for nested relations
+export const comments = pgTable('comments', {
+  id: serial('id').primaryKey(),
+  content: text('content').notNull(),
+  postId: integer('post_id').references(() => posts.id).notNull(),
+  authorId: integer('author_id').references(() => users.id).notNull(),
+});
+
+export const commentsRelations = relations(comments, ({ one }) => ({
+  post: one(posts, {
+    fields: [comments.postId],
+    references: [posts.id],
+  }),
+  author: one(users, {
+    fields: [comments.authorId],
+    references: [users.id],
+  }),
+}));
+
+// Fetch user with posts and their comments
+const usersWithPostsAndComments = await db.query.users.findMany({
+  with: {
+    posts: {
+      with: {
+        comments: true,
+      },
+    },
+  },
+});
+
+// Result structure:
+// [
+//   {
+//     id: 1,
+//     name: 'John',
+//     posts: [
+//       {
+//         id: 1,
+//         title: 'First Post',
+//         comments: [
+//           { id: 1, content: 'Great post!', postId: 1 },
+//           { id: 2, content: 'Thanks!', postId: 1 },
+//         ],
+//       },
+//     ],
+//   },
+// ]
+```
+
+### Select Specific Columns
+
+```typescript
+// Fetch only specific columns
+const usersWithPosts = await db.query.users.findMany({
+  columns: {
+    id: true,
+    name: true,
+  },
+  with: {
+    posts: {
+      columns: {
+        id: true,
+        title: true,
+      },
+    },
+  },
+});
+
+// Fetch with count (no need for separate query)
+const usersWithPostCount = await db.query.users.findMany({
+  columns: {
+    id: true,
+    name: true,
+  },
+  with: {
+    posts: {
+      columns: {
+        id: true,
+      },
+      extras: {
+        // Add computed fields
+        postCount: (table) => sql`COUNT(${table.id})`.mapWith(Number),
+      },
+    },
+  },
+});
+```
+
+### Using `findFirst` with Relations
+
+```typescript
+// Fetch single user with their posts
+const userWithPosts = await db.query.users.findFirst({
+  where: (users, { eq }) => eq(users.id, 1),
+  with: {
+    posts: true,
+  },
+});
+
+// Result:
+// {
+//   id: 1,
+//   name: 'John',
+//   email: 'john@example.com',
+//   posts: [...],
+// }
+```
+
+## Advanced Features
+
+### `$client` - Raw Client Access
+
+Access the underlying database client for raw queries:
+
+```typescript
+import { sql } from 'drizzle-orm';
+
+// Access raw client for complex queries
+const result = await db.execute(
+  sql`SELECT * FROM users WHERE id = ${userId}`
+);
+
+// Use with PostgreSQL-specific features
+const result = await db.execute(
+  sql`SELECT * FROM users WHERE to_tsvector('english', name) @@ plainto_tsquery('john')`
+);
+```
+
+### `$dynamic` - Dynamic Column References
+
+Use when column references need to be dynamic:
+
+```typescript
+import { sql } from 'drizzle-orm';
+
+// Dynamic column reference
+const columnName = 'name';
+const result = await db.select()
+  .from(users)
+  .where(sql`${sql.identifier(columnName)} = 'John'`);
+```
+
+### `$onUpdate` - Automatic Update Timestamps
+
+```typescript
+import { timestamp } from 'drizzle-orm/pg-core';
+
+export const users = pgTable('users', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  updatedAt: timestamp('updated_at')
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+// When you update a user, updatedAt is automatically set
+await db.update(users)
+  .set({ name: 'Updated Name' })
+  .where(eq(users.id, 1));
+```
+
+## Best Practices for Relational Queries
+
+1. **Use relations API**: Prefer `with()` over manual joins when possible for cleaner code
+2. **Select only needed columns**: Use `columns` option to reduce data transfer
+3. **Filter at the relation level**: Apply filters within `with()` for better performance
+4. **Be careful with N+1**: Relational queries handle this automatically, but verify the generated SQL
+5. **Use `findFirst` for single records**: More efficient than `findMany().[0]`
+6. **Leverage nested relations**: Fetch deeply nested data in a single query
+7. **Use `extras` for computed fields**: Add aggregations and calculations directly in queries
