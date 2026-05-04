@@ -1,6 +1,6 @@
 ---
 name: go-error-handling
-description: Go error handling patterns including custom error structs, error interface implementation, error wrapping with fmt.Errorf, error checking with errors.Is/As, and best practices for error messages and propagation. Use when creating custom errors, propagating errors up the call stack, or implementing consistent error handling in Go applications.
+description: Go error handling patterns including custom error structs, error interface implementation, error wrapping with fmt.Errorf, error checking with errors.Is/AsType (Go 1.26+), and best practices for error messages and propagation. Use when creating custom errors, propagating errors up the call stack, or implementing consistent error handling in Go applications.
 license: MIT
 metadata:
   author: snowmerak
@@ -11,7 +11,7 @@ metadata:
 
 # Go Error Handling Patterns
 
-This skill covers Go's error handling idioms — custom error structs, `error` interface implementation, wrapping with `%w`, checking with `errors.Is/As`, and consistent message formatting.
+This skill covers Go's error handling idioms — custom error structs, `error` interface implementation, wrapping with `%w`, checking with `errors.Is/AsType` (Go 1.26+), and consistent message formatting.
 
 ## SOP: Step-by-Step Procedures
 
@@ -197,9 +197,9 @@ func LoadConfig(path string) (*Config, error) {
 }
 ```
 
-### SOP 5: Checking Errors with `errors.Is` and `errors.As`
+### SOP 5: Checking Errors with `errors.Is` and `errors.AsType`
 
-**Checking Wrapped Errors:**
+**Go 1.26+ — Prefer `errors.AsType` over `errors.As`:**
 
 ```go
 import "errors"
@@ -213,9 +213,8 @@ func handleUser(id string) {
 			return // Handle gracefully
 		}
 
-		// Check if error wraps a custom struct type
-		var userErr *UserNotFoundError
-		if errors.As(err, &userErr) {
+		// Go 1.26+: AsType returns the matched error directly (no pointer needed)
+		if userErr := errors.AsType[*UserNotFoundError](err); userErr != nil {
 			log.Printf("Specific user error: %s", userErr.UserID)
 			return
 		}
@@ -229,33 +228,60 @@ func handleUser(id string) {
 }
 ```
 
-**Extracting Custom Error Details:**
+**Why `AsType` is preferred over `As` (Go 1.26+):**
 
 ```go
-func handlePayment(amount float64) {
-	err := processPayment(amount)
-	if err != nil {
-		var validationErr *ValidationError
-		if errors.As(err, &validationErr) {
-			log.Printf("Validation failed on field: %s", validationErr.FieldName())
-			return
-		}
+// BAD with As — requires pointer, verbose
+var userErr *UserNotFoundError
+if errors.As(err, &userErr) {
+    log.Printf("Error: %s", userErr.UserID)
+}
 
-		var httpErr *HTTPError
-		if errors.As(err, &httpErr) {
-			sendErrorResponse(httpErr.StatusCode(), httpErr.Message())
-			return
-		}
-
-		log.Printf("Payment error: %v", err)
-	}
+// GOOD with AsType — returns value directly, cleaner
+if userErr := errors.AsType[*UserNotFoundError](err); userErr != nil {
+    log.Printf("Error: %s", userErr.UserID)
 }
 ```
 
-**Multiple Error Checks:**
+**Go < 1.26 fallback (using `errors.As`):**
 
 ```go
-func handleRequest(id string) {
+// For Go versions before 1.26, use errors.As with pointer
+var userErr *UserNotFoundError
+if errors.As(err, &userErr) {
+    log.Printf("Error: %s", userErr.UserID)
+}
+```
+
+**Extracting Multiple Error Types:**
+
+```go
+func handlePayment(amount float64) error {
+	err := processPayment(amount)
+	if err != nil {
+		// Check custom validation error
+		if valErr := errors.AsType[*ValidationError](err); valErr != nil {
+			log.Printf("Validation failed on field: %s", valErr.FieldName())
+			return fmt.Errorf("payment validation: %w", err)
+		}
+
+		// Check HTTP error
+		if httpErr := errors.AsType[*HTTPError](err); httpErr != nil {
+			log.Printf("HTTP error: %d - %s", httpErr.StatusCode(), httpErr.Message())
+			return fmt.Errorf("payment HTTP failure: %w", err)
+		}
+
+		// Unexpected error
+		return fmt.Errorf("unexpected payment error: %w", err)
+	}
+	return nil
+}
+```
+
+**Multiple Error Checks with switch:**
+
+```go
+func handleRequest(id string) error {
 	err := processRequest(id)
 	if err != nil {
 		switch {
@@ -264,13 +290,13 @@ func handleRequest(id string) {
 		case errors.Is(err, ErrUnauthorized):
 			return c.Status(401).JSON(...)
 		default:
-			var validationErr *ValidationError
-			if errors.As(err, &validationErr) {
-				return c.Status(422).JSON(fiber.Map{"field": validationErr.Field})
+			if valErr := errors.AsType[*ValidationError](err); valErr != nil {
+				return c.Status(422).JSON(fiber.Map{"field": valErr.Field})
 			}
 			return c.Status(500).JSON(...)
 		}
 	}
+	return nil
 }
 ```
 
@@ -312,7 +338,7 @@ fmt.Errorf("errno 28: disk full")
 
 ## Anti-Patterns & Guardrails
 
-❌ **Never** use `%v` when you need to preserve the error chain for `errors.Is/As`:
+❌ **Never** use `%v` when you need to preserve the error chain for `errors.Is/AsType`:
 ```go
 // BAD - breaks errors.Is() chain
 return fmt.Errorf("context: %v", err)
@@ -352,14 +378,14 @@ if name == "" {
 }
 ```
 
-⚠️ **Always** use `errors.Is()` for sentinel errors and `errors.As()` for custom error structs.
+⚠️ **Always** use `errors.Is()` for sentinel errors and `errors.AsType[T]()` (Go 1.26+) or `errors.As()` for custom error structs. Prefer `AsType` — it returns the value directly without needing a pointer variable.
 
 ⚠️ **Always** include operation context in wrapped errors (e.g., `"saving user: %w"` not just `"%w"`).
 
 ## Best Practices
 
 1. Define custom error structs with meaningful fields for programmatic access
-2. Use `%w` when wrapping to preserve `errors.Is/As` chain; use `%v` only when unwrapping is unnecessary
+2. Use `%w` when wrapping to preserve `errors.Is/AsType` chain; use `%v` only when unwrapping is unnecessary
 3. Check errors at the boundary (HTTP handlers, CLI entry points) and handle appropriately
 4. Keep error messages clear, actionable, and include relevant identifiers (IDs, names)
 5. Use package-level sentinel errors (`var ErrNotFound = errors.New(...)`) for common cases
@@ -368,7 +394,7 @@ if name == "" {
 ## References
 
 - [Go Error Handling Best Practices](https://go.dev/blog/go1.13-errors)
-- [errors Package Documentation](https://pkg.go.dev/errors)
+- [errors Package Documentation (Go 1.26)](https://pkg.go.dev/errors)
 - [fmt.Errorf Documentation](https://pkg.go.dev/fmt#Errorf)
 - [A Tour of Go: Errors](https://go.dev/tour/basics/7)
 
