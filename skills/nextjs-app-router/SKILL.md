@@ -1,6 +1,6 @@
 ---
 name: nextjs-app-router
-description: Next.js App Router의 핵심 아키텍처를 다룹니다. 레이아웃, 페이지, 라우팅, 서버/클라이언트 컴포넌트 구분, 링크 및 네비게이션, 에러 처리 등 App Router 기반 애플리케이션 구조 설계에 사용합니다.
+description: Covers the core architecture of Next.js App Router, including layouts, pages, routing, server/client component separation, links and navigation, error handling. Use when designing App Router-based application structures.
 license: MIT
 metadata:
   author: snowmerak
@@ -13,43 +13,43 @@ metadata:
 
 ## Overview
 
-Next.js 13+의 App Router는 React Server Components를 기반으로 한 새로운 라우팅 시스템입니다. 파일 시스템 기반 라우팅, 레이아웃 중첩, 서버/클라이언트 컴포넌트 분리가 핵심입니다.
+Next.js 13+ App Router is a new routing system based on React Server Components. File-system-based routing, nested layouts, and server/client component separation are its core features.
 
-**핵심 원칙**: 기본적으로 모든 컴포넌트는 **서버 컴포넌트**이며, `use client` 지시어로만 클라이언트 컴포넌트가 됩니다.
+**Core Principle**: By default, all components are **server components**; only with the `use client` directive do they become client components.
 
 ---
 
 ## SOP: Step-by-Step Procedures
 
-### 1. 프로젝트 구조 이해
+### 1. Understand Project Structure
 
 ```
 app/
-├── layout.js          # 루트 레이아웃 (전체 페이지 공유)
-├── page.js            # 루트 페이지 (/)
-├── loading.js         # 로딩 UI (Suspense 자동 적용)
-├── error.js           # 에러 UI (Boundary)
-├── not-found.js       # 404 페이지
-├── globals.css        # 전역 CSS
-├── favicon.ico        # 파비콘
+├── layout.js          # Root layout (shared across entire page)
+├── page.js            # Root page (/)
+├── loading.js         # Loading UI (Suspense applied automatically)
+├── error.js           # Error UI (Boundary)
+├── not-found.js       # 404 page
+├── globals.css        # Global CSS
+├── favicon.ico        # Favicon
 ├── about/
 │   └── page.js        # /about
 ├── blog/
-│   ├── page.js        # /blog (목록)
+│   ├── page.js        # /blog (list)
 │   └── [slug]/
-│       └── page.js    # /blog/[slug] (동적 라우팅)
+│       └── page.js    # /blog/[slug] (dynamic routing)
 ├── dashboard/
-│   ├── layout.js      # /dashboard 하위 레이아웃
+│   ├── layout.js      # Sub-layout under /dashboard
 │   └── page.js        # /dashboard
-└── (auth)/            # Route Group (URL에 영향 없음)
+└── (auth)/            # Route Group (no impact on URL)
     └── login/
         └── page.js    # /login
 ```
 
-### 2. 레이아웃과 페이지 설계
+### 2. Design Layouts and Pages
 
 ```jsx
-// app/layout.js — 루트 레이아웃
+// app/layout.js — Root layout
 export default function RootLayout({ children }) {
   return (
     <html lang="ko">
@@ -62,7 +62,7 @@ export default function RootLayout({ children }) {
   );
 }
 
-// app/dashboard/layout.js — 하위 레이아웃
+// app/dashboard/layout.js — Sub-layout
 export default function DashboardLayout({ children, sidebar }) {
   return (
     <div className="dashboard">
@@ -74,39 +74,39 @@ export default function DashboardLayout({ children, sidebar }) {
 ```
 
 **Step-by-Step**:
-1. `layout.js`는 같은 라우트 그룹 내의 모든 페이지에서 공유
-2. 중첩 레이아웃 가능 (루트 → 그룹 → 동적 세그먼트)
-3. `children` prop으로 하위 페이지 렌더링
-4. `loading.js`, `error.js`는 레이아웃과 함께 사용
+1. `layout.js` is shared across all pages in the same route group
+2. Nested layouts are possible (root → group → dynamic segment)
+3. Render child pages via `children` prop
+4. Use with `loading.js`, `error.js`
 
-### 3. 라우팅 패턴
+### 3. Routing Patterns
 
 ```jsx
-// 정적 라우팅: app/about/page.js → /about
-// 동적 라우팅: app/blog/[slug]/page.js → /blog/[slug]
-// 병렬 라우팅: app/@sidebar/page.js + app/@main/page.js
-// 인터셉팅 라우팅: app/(auth)/login/page.js → /login (URL에 그룹명 안 나타남)
+// Static routing: app/about/page.js → /about
+// Dynamic routing: app/blog/[slug]/page.js → /blog/[slug]
+// Parallel routing: app/@sidebar/page.js + app/@main/page.js
+// Intercepting routing: app/(auth)/login/page.js → /login (group name not in URL)
 
-// 동적 세그먼트 예시
+// Dynamic segment examples
 app/blog/[slug]/page.js       // /blog/hello-world
-app/dashboard/[[...catchAll]]/page.js  // /dashboard/* (옵셔널 catch-all)
+app/dashboard/[[...catchAll]]/page.js  // /dashboard/* (optional catch-all)
 ```
 
 **Step-by-Step**:
-1. 폴더명으로 정적 라우트 생성
-2. `[param]`으로 동적 세그먼트
-3. `[[...catchAll]]`으로 옵셔널 catch-all
-4. `(group)`으로 URL에 영향 없는 그룹화
+1. Create static routes via folder names
+2. Use `[param]` for dynamic segments
+3. Use `[[...catchAll]]` for optional catch-all
+4. Use `(group)` for grouping without URL impact
 
-### 4. 서버/클라이언트 컴포넌트 구분
+### 4. Server/Client Component Separation
 
 ```jsx
-// app/components/Header.jsx — 기본: 서버 컴포넌트
+// app/components/Header.jsx — Default: server component
 export default function Header() {
   return <header>...</header>;
 }
 
-// app/components/SearchBar.jsx — 클라이언트 컴포넌트 필요 시
+// app/components/SearchBar.jsx — Client component when needed
 'use client';
 
 import { useState } from 'react';
@@ -116,29 +116,29 @@ export default function SearchBar() {
   return <input value={query} onChange={(e) => setQuery(e.target.value)} />;
 }
 
-// app/page.jsx — 서버 컴포넌트에서 클라이언트 컴포넌트 사용
+// app/page.jsx — Using client component in server component
 import SearchBar from '@/components/SearchBar';
 
 export default function Page() {
   return (
     <div>
-      <SearchBar /> {/* 클라이언트 컴포넌트 */}
-      <DataContent /> {/* 서버 컴포넌트 */}
+      <SearchBar /> {/* Client component */}
+      <DataContent /> {/* Server component */}
     </div>
   );
 }
 ```
 
 **Step-by-Step**:
-1. 파일 상단에 `'use client'` → 클라이언트 컴포넌트
-2. `'use client'` 없음 → 서버 컴포넌트 (기본)
-3. 서버 컴포넌트에서 클라이언트 컴포넌트 import 가능 (역은 불가)
-4. 클라이언트 컴포넌트는 `useState`, `useEffect` 등 사용 가능
+1. `'use client'` at top of file → client component
+2. No `'use client'` → server component (default)
+3. Server components can import client components (reverse not possible)
+4. Client components can use `useState`, `useEffect`, etc.
 
-### 5. 에러 처리
+### 5. Error Handling
 
 ```jsx
-// app/error.js — 에러 경계
+// app/error.js — Error boundary
 'use client';
 
 export default function Error({ error, reset }) {
@@ -151,12 +151,12 @@ export default function Error({ error, reset }) {
   );
 }
 
-// app/not-found.js — 404 페이지
+// app/not-found.js — 404 page
 export default function NotFound() {
   return <h2>Not Found</h2>;
 }
 
-// 프로그래매틱 에러 발생
+// Programmatic error throwing
 import { notFound } from 'next/navigation';
 import { forbidden } from 'next/navigation';
 
@@ -164,21 +164,21 @@ if (!data) notFound();
 if (!isAuthorized) forbidden();
 ```
 
-### 6. 링크 및 네비게이션
+### 6. Links and Navigation
 
 ```jsx
 import Link from 'next/link';
 
-// 기본 링크
+// Basic link
 <Link href="/about">About</Link>
 
-// 동적 라우트
+// Dynamic route
 <Link href={`/blog/${slug}`}>{title}</Link>
 
-// 새 탭 열기 (클라이언트 사이드 네비게이션 비활성화)
+// Open in new tab (disable client-side navigation)
 <Link href="https://external.com" target="_blank">External</Link>
 
-// prefetch 설정
+// Configure prefetch
 <Link href="/about" prefetch={false}>About</Link>
 ```
 
@@ -186,34 +186,34 @@ import Link from 'next/link';
 
 ## Tool Integration
 
-| 도구 | 사용 목적 | 예시 |
-|------|-----------|------|
-| `run_command` | Next.js 개발 서버 실행 | `npm run dev`, `npx next lint` |
-| `search_files` | 컴포넌트/라우트 검색 | `grep -r "use client" app/` |
-| `read_file` | 레이아웃/페이지 구조 분석 | layout.js, page.js 확인 |
-| `edit_file` | 라우트/컴포넌트 수정 | 새 페이지 추가, 레이아웃 변경 |
+| Tool | Purpose | Example |
+|------|---------|---------|
+| `run_command` | Run Next.js dev server | `npm run dev`, `npx next lint` |
+| `search_files` | Search components/routes | `grep -r "use client" app/` |
+| `read_file` | Analyze layout/page structure | Check layout.js, page.js |
+| `edit_file` | Modify routes/components | Add new page, change layout |
 
 ---
 
 ## Anti-Patterns & Guardrails
 
-❌ **클라이언트 컴포넌트 남용** — 모든 컴포넌트에 `'use client'` 붙이지 말 것  
-❌ **서버 컴포넌트에서 useState/useEffect 사용** — `'use client'` 필요  
-❌ **layout.js에 페이지 콘텐츠 넣기** — layout은 구조, page는 콘텐츠 분리  
-❌ **동적 라우트에서 모든 데이터 페칭** — `generateStaticParams`로 정적 생성 고려  
+❌ **Overusing client components** — Do not add `'use client'` to every component  
+❌ **Using useState/useEffect in server components** — Requires `'use client'`  
+❌ **Putting page content in layout.js** — Layout is for structure, page is for content  
+❌ **Fetching all data in dynamic routes** — Consider `generateStaticParams` for static generation  
 
-⚠️ **클라이언트 컴포넌트는 번들 크기 증가** — 필요한 경우에만 사용  
-⚠️ **중첩 레이아웃은 children만 렌더링** — 중복 구조 피할 것  
+⚠️ **Client components increase bundle size** — Use only when necessary  
+⚠️ **Nested layouts only render children** — Avoid duplicate structures  
 
 ---
 
 ## Best Practices
 
-1. **서버 컴포넌트 기본** — 클라이언트 기능 필요 시에만 `'use client'`
-2. **레이아웃 중첩 활용** — 공통 UI는 상위 layout에서 관리
-3. **Route Groups 사용** — `/dashboard/admin`, `/dashboard/user` 구조화
-4. **동적 세그먼트 최소화** — 정적 생성 가능한 경우 `generateStaticParams` 활용
-5. **error.js + not-found.js 필수** — 모든 라우트 그룹에 에러 처리
+1. **Default to server components** — Only use `'use client'` when client features are needed
+2. **Leverage nested layouts** — Manage common UI in parent layout
+3. **Use Route Groups** — Structure `/dashboard/admin`, `/dashboard/user`
+4. **Minimize dynamic segments** — Use `generateStaticParams` where static generation is possible
+5. **Mandatory error.js + not-found.js** — Error handling for all route groups
 
 ---
 

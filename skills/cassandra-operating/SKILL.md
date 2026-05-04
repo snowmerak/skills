@@ -1,6 +1,6 @@
 ---
 name: cassandra-operating
-description: Apache Cassandra 클러스터 운영 전반을 다룹니다. 백업/복구, 리페어(Repair), 컴팩션(Compaction), 모니터링, 보안 설정, 하드웨어 가이드라인, 트랜지언트 레플리케이션 등 운영 실무 작업을 수행할 때 사용합니다.
+description: Covers overall Apache Cassandra cluster operations, including backup/restore, repair, compaction, monitoring, security configuration, hardware guidelines, transient replication. Use when performing daily operational tasks on Cassandra clusters.
 license: MIT
 metadata:
   author: snowmerak
@@ -13,208 +13,208 @@ metadata:
 
 ## Overview
 
-Cassandra 클러스터 운영은 분산 시스템의 특성상 특별한 주의가 필요합니다. 백업, 리페어, 컴팩션, 모니터링 등 핵심 운영 작업을 체계적으로 수행해야 안정성을 보장할 수 있습니다.
+Cassandra cluster operations require special attention due to distributed system characteristics. Core operational tasks — backups, repairs, compaction, monitoring — must be performed systematically to ensure stability.
 
-**핵심 원칙**: 자동화 우선, 모니터링 상시, 예방적 유지보수.
+**Core Principle**: Prioritize automation, continuous monitoring, preventive maintenance.
 
 ---
 
 ## SOP: Step-by-Step Procedures
 
-### 1. 백업 및 복구 (Backups & Restore)
+### 1. Backups & Restore
 
 ```bash
-# 스냅샷 생성
+# Create snapshot
 nodetool snapshot -t backup_20240101 my_keyspace
 
-# 스냅샷 목록 확인
+# Check snapshot list
 nodetool listsnapshots
 
-# sstableloader로 다른 노드에 데이터 복원
+# Restore data to another node using sstableloader
 sstableloader -d <target_node_ip> /path/to/sstables
 
-# 스냅샷 삭제 (복구 후)
+# Delete snapshot (after restore)
 nodetool clearsnapshot -t backup_20240101
 ```
 
 **Step-by-Step**:
-1. `nodetool snapshot`으로 현재 상태 스냅샷 생성
-2. 스냅샷 디렉토리 백업 (S3/GCS 등 외부 저장소)
-3. 복구 시 `sstableloader` 또는 `sstablerepairedex` 사용
-4. 복구 완료 후 스냅샷 정리
+1. Create current state snapshot with `nodetool snapshot`
+2. Backup snapshot directory to external storage (S3/GCS, etc.)
+3. Use `sstableloader` or `sstablerepairedex` for restore
+4. Clean up snapshots after complete restore
 
-### 2. 리페어 (Repair)
+### 2. Repair
 
 ```bash
-# 전체 클러스터 리페어
+# Full cluster repair
 nodetool repair
 
-# 특정 키스페이스 리페어
+# Specific keyspace repair
 nodetool repair my_keyspace
 
-# 아카이브 리페어 (Auto Repair 권장)
-# cassandra.yaml에서 auto_snapshot 설정
-auto_snapshot: false  # 리페어 시 스냅샷 비활성화
+# Archive repair (Auto Repair recommended)
+# Configure in cassandra.yaml
+auto_snapshot: false  # Disable snapshot during repair
 ```
 
 **Step-by-Step**:
-1. 정기적 리페어 스케줄링 (일일/주간)
-2. `nodetool repair -pr`로 파티션 레인저 사용 권장
-3. Auto Repair 설정으로 자동화 고려
-4. 리페어 중 모니터링 (CPU, 네트워크 부하 확인)
+1. Schedule regular repairs (daily/weekly)
+2. Recommend using `nodetool repair -pr` with partitioner ranges
+3. Consider automation via Auto Repair configuration
+4. Monitor during repair (check CPU, network load)
 
-### 3. 컴팩션 관리 (Compaction)
+### 3. Compaction Management
 
 ```yaml
-# cassandra.yaml 컴팩션 전략 설정
-compaction_throughput_mb_per_sec: 16  # 초당 MB 단위
+# Compaction strategy settings in cassandra.yaml
+compaction_throughput_mb_per_sec: 16  # MB per second
 compaction_large_partition_warning_threshold_mb: 100
 
-# SizeTiered Compaction (쓰기 중심)
+# SizeTiered Compaction (write-heavy)
 STCS:
   class: org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy
   max_threshold: 32
   min_threshold: 4
 
-# Leveled Compaction (읽기 중심)
+# Leveled Compaction (read-heavy)
 LCS:
   class: org.apache.cassandra.db.compaction.LeveledCompactionStrategy
 ```
 
 **Step-by-Step**:
-1. 워크로드 유형에 따라 컴팩션 전략 선택
-   - STCS: 쓰기 빈도 높음
-   - LCS: 읽기 빈도 높음
-   - TWCS: 타임스탬프 기반 데이터 (로그, 이벤트)
-2. `compaction_throughput_mb_per_sec` 튜닝
-3. 컴팩션 모니터링: `nodetool compactionstats`
+1. Select compaction strategy based on workload type
+   - STCS: High write frequency
+   - LCS: High read frequency
+   - TWCS: Timestamp-based data (logs, events)
+2. Tune `compaction_throughput_mb_per_sec`
+3. Monitor compaction: `nodetool compactionstats`
 
-### 4. 모니터링 메트릭
+### 4. Monitoring Metrics
 
 ```bash
-# 노드 상태 확인
+# Check node status
 nodetool status
 
-# 메트릭 확인
+# Check metrics
 nodetool stats my_keyspace
-nodetool tpstats  # 스레드 풀 대기 상태
+nodetool tpstats  # Thread pool queue status
 nodetool tablestats my_keyspace my_table
 
-# GC 정보
+# GC information
 nodetool gcstats
 
-# 커넥션 정보
+# Connection information
 nodetool netstats
 ```
 
 **Step-by-Step**:
-1. `nodetool status`로 클러스터 건강 상태 확인
-2. `nodetool tpstats`로 스레드 풀 대기 시간 모니터링
-3. `nodetool tablestats`로 테이블별 읽기/쓰기 레이턴시 추적
-4. GC 로그 분석으로 메모리 문제 진단
+1. Check cluster health with `nodetool status`
+2. Monitor thread pool wait times via `nodetool tpstats`
+3. Track per-table read/write latency with `nodetool tablestats`
+4. Diagnose memory issues by analyzing GC logs
 
-### 5. 보안 설정 (Security)
+### 5. Security Configuration
 
 ```cql
--- 인증 활성화 (cassandra.yaml)
+-- Enable authentication (in cassandra.yaml)
 authenticator: PasswordAuthenticator
 
--- 인가 활성화
+-- Enable authorization
 authorizer: CassandraAuthorizer
 
--- SSL/TLS 설정
+-- SSL/TLS configuration
 client_encryption_options:
   enabled: true
   optional: false
   keystore: /path/to/keystore.jks
   keystore_password: <password>
 
--- RBAC 권한 부여
+-- RBAC permission grant
 CREATE USER admin WITH PASSWORD 'secure_password' SUPERUSER;
 GRANT SELECT ON KEYSPACE my_app TO app_user;
 ```
 
 **Step-by-Step**:
-1. `PasswordAuthenticator` 활성화
-2. `CassandraAuthorizer`로 RBAC 설정
-3. SSL/TLS로 노드 간/클라이언트 암호화
-4. 최소 권한 원칙 적용 (GRANT/REVOKE)
+1. Enable `PasswordAuthenticator`
+2. Configure RBAC with `CassandraAuthorizer`
+3. Encrypt node-to-node/client communication with SSL/TLS
+4. Apply principle of least privilege (GRANT/REVOKE)
 
-### 6. 하드웨어 가이드라인
+### 6. Hardware Guidelines
 
 ```yaml
-# 권장 사양
-CPU: 8+ 코어 (컴팩션에 많은 CPU 필요)
-RAM: 32GB+ (메모리 풀 할당 고려)
-Disk: SSD 필수 (SSTable I/O 성능 중요)
-Network: 1Gbps 이상 (노드 간 통신)
+# Recommended specifications
+CPU: 8+ cores (compaction requires significant CPU)
+RAM: 32GB+ (consider memory pool allocation)
+Disk: SSD mandatory (SSTable I/O performance critical)
+Network: 1Gbps or higher (node-to-node communication)
 
-# 메모리 설정 (jvm-server.options)
-# Heap size는 6-8GB 권장 (초과 시 성능 저하)
+# Memory settings (jvm-server.options)
+# Heap size recommended at 6-8GB (exceeding degrades performance)
 -Xms6g
 -Xmx6g
 ```
 
 **Step-by-Step**:
-1. SSD 디스크 필수 사용 (HDD 비권장)
-2. RAM은 메타데이터 저장용, Heap은 6-8GB로 제한
-3. 네트워크 대역폭 확보 (노드 간 스트리밍 고려)
-4. CPU 코어 수 확인 (컴팩션 병렬 처리)
+1. Use SSD disks mandatory (HDD not recommended)
+2. RAM for metadata storage, limit Heap to 6-8GB
+3. Ensure network bandwidth (consider node-to-node streaming)
+4. Verify CPU core count (compaction parallel processing)
 
-### 7. 트랜지언트 레플리케이션
+### 7. Transient Replication
 
 ```bash
-# 노드 추가 시 자동 복제
-# cassandra.yaml에서 활성화
+# Automatic replication when adding nodes
+# Enable in cassandra.yaml
 auto_bootstrap: true
 
-# 수동 트랜지언트 리페어
+# Manual transient repair
 nodetool repair -pr -t <new_node_ip>
 ```
 
 **Step-by-Step**:
-1. 새 노드 추가 시 `auto_bootstrap: true` 확인
-2. 노드 합류 후 자동 리페어 실행
-3. 데이터 동기화 완료 확인 (`nodetool status`)
-4. 트랜지언트 데이터 정리
+1. Verify `auto_bootstrap: true` when adding new node
+2. Run automatic repair after node joins
+3. Confirm data synchronization complete (`nodetool status`)
+4. Clean up transient data
 
 ---
 
 ## Tool Integration
 
-| 도구 | 사용 목적 | 예시 |
-|------|-----------|------|
-| `run_command` | nodetool, sstableloader 실행 | `nodetool repair my_keyspace` |
-| `search_files` | 로그 파일 패턴 검색 | `grep -r "ERROR" system.log` |
-| `read_file` | 설정 파일 분석 | cassandra.yaml 확인 |
-| `edit_file` | 설정 변경 적용 | jvm 옵션 수정 |
+| Tool | Purpose | Example |
+|------|---------|---------|
+| `run_command` | Execute nodetool, sstableloader | `nodetool repair my_keyspace` |
+| `search_files` | Search log file patterns | `grep -r "ERROR" system.log` |
+| `read_file` | Analyze configuration files | Check cassandra.yaml |
+| `edit_file` | Apply configuration changes | Modify JVM options |
 
 ---
 
 ## Anti-Patterns & Guardrails
 
-❌ **리페어 생략** — 데이터 불일치 누적, 데이터 손실 위험  
-❌ **HDD 사용** — SSTable I/O 성능 치명적 저하  
-❌ **Heap 8GB 초과** — GC 지연 시간 증가, 서비스 중단 위험  
-❌ **스냅샷 미정리** — 디스크 공간 고갈  
-❌ **모니터링 부재** — 문제 조기 발견 불가  
-❌ **SSL/TLS 비활성화** — 데이터 유출 위험 (프로덕션)  
+❌ **Skipping repairs** — Data inconsistencies accumulate, risk of data loss  
+❌ **Using HDD** — Fatal SSTable I/O performance degradation  
+❌ **Heap exceeding 8GB** — Increased GC pause time, risk of service interruption  
+❌ **Not cleaning up snapshots** — Disk space exhaustion  
+❌ **No monitoring** — Cannot detect issues early  
+❌ **Disabling SSL/TLS** — Data breach risk (production)  
 
-⚠️ **대규모 리페어 시 네트워크 포화** — 시간대 분리 또는 분산 실행  
-⚠️ **컴팩션 중 쓰기 지연** — 스로틀링 설정 권장  
-⚠️ **GC 휴지 시간 초과** — Heap 크기 조정 필요  
+⚠️ **Network saturation during large repairs** — Separate by time or distribute execution  
+⚠️ **Write delays during compaction** — Throttling settings recommended  
+⚠️ **GC pause time exceeded** — Adjust Heap size  
 
 ---
 
 ## Best Practices
 
-1. **정기적 리페어 스케줄링** — 일일 또는 주간 자동화
-2. **모니터링 상시 유지** — 메트릭 수집 및 알림 설정
-3. **SSD 디스크 필수** — HDD 사용 금지
-4. **Heap 6-8GB로 제한** — 초과 시 성능 저하
-5. **SSL/TLS 활성화** — 프로덕션 환경 필수
-6. **스냅샷 자동 정리** — 디스크 공간 관리
-7. **Auto Repair 고려** — 수동 리페어 오버헤드 감소
+1. **Schedule regular repairs** — Daily or weekly automation
+2. **Continuous monitoring** — Collect metrics and set alerts
+3. **SSD disks mandatory** — Never use HDD
+4. **Limit Heap to 6-8GB** — Performance degrades beyond this
+5. **Enable SSL/TLS** — Mandatory for production environments
+6. **Auto-clean snapshots** — Manage disk space
+7. **Consider Auto Repair** — Reduce manual repair overhead
 
 ---
 

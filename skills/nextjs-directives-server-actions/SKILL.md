@@ -1,6 +1,6 @@
 ---
 name: nextjs-directives-server-actions
-description: Next.js의 핵심 지시문과 서버 액션을 다룹니다. 'use client', 'use server' 지시문, Cache Components(directive), Server Actions(폼 제출), 그리고 관련 함수(after, cookies, draftMode) 사용법을 학습합니다.
+description: Covers Next.js core directives and server actions including 'use client', 'use server' directives, Cache Components (directive), Server Actions (form submission), and related functions (after, cookies, draftMode). Use when implementing type-safe form submissions and server-client boundaries.
 license: MIT
 metadata:
   author: snowmerak
@@ -13,18 +13,18 @@ metadata:
 
 ## Overview
 
-Next.js App Router의 핵심 기능인 `use client`, `use server` 지시문과 Cache Components directive, Server Actions를 다룹니다. 서버-클라이언트 경계를 명확히 하고, 타입 세이프한 폼 제출을 구현하는 방법을 학습합니다.
+Covers core features of Next.js App Router: `use client`, `use server` directives, Cache Components directive, and Server Actions. Learn to clearly define server-client boundaries and implement type-safe form submissions.
 
-**핵심 원칙**: `'use server'`로 함수를 서버로 마킹 → 클라이언트에서 직접 호출 가능 (타입 안전).
+**Core Principle**: Mark functions as server with `'use server'` → callable directly from client (type-safe).
 
 ---
 
 ## SOP: Step-by-Step Procedures
 
-### 1. 'use client' 지시문
+### 1. 'use client' Directive
 
 ```jsx
-// app/components/SearchBar.jsx — 클라이언트 컴포넌트
+// app/components/SearchBar.jsx — Client component
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -48,16 +48,16 @@ export default function SearchBar() {
 }
 ```
 
-**'use client' 필요 조건**:
-- `useState`, `useEffect`, `useContext` 등 React 훅 사용
-- 이벤트 핸들러 (onClick, onChange 등)
-- 브라우저 API 접근 (window, localStorage)
-- DOM 조작 필요
+**When 'use client' is Required**:
+- Using React hooks: `useState`, `useEffect`, `useContext`, etc.
+- Event handlers (onClick, onChange, etc.)
+- Accessing browser APIs (window, localStorage)
+- DOM manipulation needed
 
-### 2. 'use server' 지시문 — Server Actions
+### 2. 'use server' Directive — Server Actions
 
 ```jsx
-// app/actions.js — 서버 액션 함수
+// app/actions.js — Server action function
 'use server';
 
 import { revalidateTag } from 'next/cache';
@@ -66,21 +66,21 @@ export async function createPost(formData) {
   const title = formData.get('title');
   const content = formData.get('content');
 
-  // 데이터베이스 저장 로직...
+  // Database save logic...
   
   revalidateTag('posts');
   return { success: true };
 }
 
-// 인자 있는 서버 액션
+// Server action with arguments
 export async function deletePost(id) {
-  // 삭제 로직...
+  // Delete logic...
   revalidateTag('posts');
 }
 ```
 
 ```jsx
-// app/posts/create.jsx — 폼에서 서버 액션 사용
+// app/posts/create.jsx — Using server action in form
 import { createPost } from '@/actions';
 
 export default function CreatePost() {
@@ -93,7 +93,7 @@ export default function CreatePost() {
   );
 }
 
-// 인자 전달 (useTransition 활용)
+// Passing arguments (using useTransition)
 'use client';
 
 import { createPost } from '@/actions';
@@ -113,15 +113,15 @@ export default function CreatePostForm() {
 ```
 
 **Step-by-Step**:
-1. 별도 파일에 `'use server'`로 서버 액션 정의
-2. 클라이언트 컴포넌트에서 import하여 사용
-3. `form action={action}` 또는 `onClick={() => action()}`으로 호출
-4. `useActionState` + `useTransition`으로 상태 관리
+1. Define server actions in separate file with `'use server'`
+2. Import and use in client components
+3. Call via `form action={action}` or `onClick={() => action()}`
+4. Manage state with `useActionState` + `useTransition`
 
 ### 3. Cache Components Directive
 
 ```jsx
-// app/lib/data.js — 캐시된 데이터 함수
+// app/lib/data.js — Cached data function
 import { cache } from 'react';
 
 const getCachedUser = cache(async (userId) => {
@@ -129,11 +129,11 @@ const getCachedUser = cache(async (userId) => {
 });
 
 export async function getUser(userId) {
-  // 같은 요청 내에서 중복 fetch 방지
+  // Prevent duplicate fetch within same request
   return getCachedUser(userId);
 }
 
-// private 캐시 (개인화된 데이터)
+// Private cache (personalized data)
 'use cache';
 cache({ type: 'private' });
 
@@ -141,7 +141,7 @@ const getPrivateData = cache(async () => {
   return fetch('/api/private').then((r) => r.json());
 });
 
-// remote 캐시 (분산 캐싱)
+// Remote cache (distributed caching)
 'use cache';
 cache({ type: 'remote', minAge: 60 });
 
@@ -150,18 +150,18 @@ const getRemoteData = cache(async () => {
 });
 ```
 
-**캐시 타입**:
+**Cache Types**:
 
-| 타입 | 범위 | 사용처 |
-|------|------|--------|
-| 기본 (생략) | 서버 인스턴스 | 일반 데이터 |
-| `private` | 사용자 세션 | 개인화된 데이터 |
-| `remote` | 분산 캐시 | CDN/외부 API |
+| Type | Scope | Use Case |
+|------|-------|----------|
+| Default (omitted) | Server instance | General data |
+| `private` | User session | Personalized data |
+| `remote` | Distributed cache | CDN/external API |
 
-### 4. 관련 함수들
+### 4. Related Functions
 
 ```jsx
-// cookies() — 쿠키 읽기 (서버 컴포넌트)
+// cookies() — Read cookies (server component)
 import { cookies } from 'next/headers';
 
 export default async function Page() {
@@ -170,12 +170,12 @@ export default async function Page() {
   return <div>Theme: {theme}</div>;
 }
 
-// after() — 응답 후 실행 (비동기 작업)
+// after() — Execute after response (async operations)
 import { after } from 'next/headers';
 
 export default async function Page() {
   after(async () => {
-    // 페이지 응답 후 백그라운드 작업
+    // Background work after page response
     await logVisit();
     await sendNotification();
   });
@@ -183,18 +183,18 @@ export default async function Page() {
   return <div>Page Content</div>;
 }
 
-// draftMode() — 드래프트 모드
+// draftMode() — Draft mode
 import { draftMode } from 'next/headers';
 
 export default async function Page() {
   const draft = await draftMode();
   if (draft.isEnabled) {
-    // 드래프트 버전 렌더링
+    // Render draft version
   }
   return <div>Content</div>;
 }
 
-// connection() — 연결 재사용
+// connection() — Connection reuse
 import { connection } from 'next/cache';
 
 export default async function Page() {
@@ -204,7 +204,7 @@ export default async function Page() {
 }
 ```
 
-### 5. Server Actions + 폼 유효성 검사
+### 5. Server Actions + Form Validation
 
 ```jsx
 // app/actions.js
@@ -224,7 +224,7 @@ export async function createPost(formData) {
     return { error: 'Invalid data', fields: result.error.flatten() };
   }
 
-  // 저장 로직...
+  // Save logic...
   return { success: true };
 }
 ```
@@ -233,33 +233,33 @@ export async function createPost(formData) {
 
 ## Tool Integration
 
-| 도구 | 사용 목적 | 예시 |
-|------|-----------|------|
-| `run_command` | Next.js 개발 서버 실행 | `npm run dev`, Server Actions 테스트 |
-| `search_files` | 'use server' 패턴 검색 | `grep -r "'use server'" app/` |
-| `read_file` | 액션 함수 분석 | actions.js 구조 확인 |
-| `edit_file` | 서버 액션 추가/수정 | 새 action 함수 생성 |
+| Tool | Purpose | Example |
+|------|---------|---------|
+| `run_command` | Run Next.js dev server | `npm run dev`, test Server Actions |
+| `search_files` | Search for 'use server' patterns | `grep -r "'use server'" app/` |
+| `read_file` | Analyze action functions | Check actions.js structure |
+| `edit_file` | Add/modify server actions | Create new action function |
 
 ---
 
 ## Anti-Patterns & Guardrails
 
-❌ **서버 컴포넌트에서 useState/useEffect 사용** — `'use client'` 필요  
-❌ **클라이언트 컴포넌트에서 직접 DB 접근** — Server Actions로 래핑  
-❌ **'use server' 함수에 클라이언트 의존성 넣기** — 순수 서버 코드만 허용  
+❌ **Using useState/useEffect in server components** — Requires `'use client'`  
+❌ **Directly accessing DB from client components** — Wrap with Server Actions  
+❌ **Adding client dependencies to 'use server' functions** — Only pure server code allowed  
 
-⚠️ **대용량 FormData 전송** — 크기 제한 확인, 스트리밍 고려  
-⚠️ **Server Actions에서 동기 작업** — `after()`로 비동기 처리  
+⚠️ **Sending large FormData** — Check size limits, consider streaming  
+⚠️ **Synchronous operations in Server Actions** — Use `after()` for async processing  
 
 ---
 
 ## Best Practices
 
-1. **서버 액션 별도 파일에 분리** — actions.js 또는 lib/actions.ts
-2. **zod 등 스키마 검증 필수** — 타입 안전 + 서버 사이드 검증
-3. **'use server'는 함수 단위** — 전체 파일이 아닌 함수에 적용
-4. **revalidateTag 활용** — 데이터 변경 후 캐시 무효화
-5. **useActionState로 피드백** — 성공/실패 상태 클라이언트에 전달
+1. **Separate server actions into dedicated files** — actions.js or lib/actions.ts
+2. **Mandatory schema validation (zod, etc.)** — Type safety + server-side validation
+3. **'use server' at function level** — Apply to functions, not entire file
+4. **Leverage revalidateTag** — Invalidate cache after data changes
+5. **Provide feedback with useActionState** — Pass success/failure state to client
 
 ---
 

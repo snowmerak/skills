@@ -1,6 +1,6 @@
 ---
 name: cassandra-troubleshooting
-description: Apache Cassandra 클러스터 문제 해결 방법을 다룹니다. 이상 노드 찾기, 로그 분석, nodetool 활용 디버깅, 외부 도구 활용한 심층 분석 등 운영 중 발생하는 문제를 체계적으로 진단하고 해결하는 방법을 학습합니다.
+description: Covers Apache Cassandra cluster troubleshooting methods, including finding misbehaving nodes, log analysis, nodetool-based debugging, in-depth analysis using external tools. Use when diagnosing and resolving operational issues in Cassandra clusters.
 license: MIT
 metadata:
   author: snowmerak
@@ -13,245 +13,245 @@ metadata:
 
 ## Overview
 
-분산 데이터베이스인 Cassandra는 다양한 이유로 문제가 발생할 수 있습니다. 체계적인 문제 해결 접근법과 도구 활용이 필수적입니다. 일반적으로 **이상 노드 식별 → 로그 분석 → 도구 기반 심층 진단**의 3단계로 진행합니다.
+Cassandra, as a distributed database, can encounter issues for various reasons. Systematic troubleshooting approaches and tool usage are essential. Typically proceeds in 3 stages: **identify misbehaving nodes → analyze logs → in-depth diagnosis with tools**.
 
-**핵심 원칙**: 시스템적 접근, 데이터 기반 진단, 단계적 좁히기.
+**Core Principle**: Systematic approach, data-driven diagnostics, step-by-step narrowing.
 
 ---
 
 ## SOP: Step-by-Step Procedures
 
-### 1. 이상 노드 찾기 (Finding Misbehaving Nodes)
+### 1. Finding Misbehaving Nodes
 
 ```bash
-# 클러스터 상태 확인
+# Check cluster status
 nodetool status
-# DOWN 표시된 노드, UNBALANCED 파티션 확인
+# Look for DOWN nodes, UNBALANCED partitions
 
-# 토큰 분포 확인
+# Check token distribution
 nodetool status -p
 
-# 노드 응답 시간 확인
+# Check node response times
 nodetool tpstats
-# Blocked Operations 카운트 증가 시 문제 신호
+# Increasing Blocked Operations count is a warning sign
 
-# 커넥션 상태 확인
+# Check connection status
 nodetool netstats
-# Active connections 비정상 증가 시 진단 필요
+# Abnormal increase in Active connections requires diagnosis
 
-# GC 상태 확인
+# Check GC status
 nodetool gcstats
-# GC 휴지 시간 500ms 초과 시 문제
+# GC pause time exceeding 500ms indicates problems
 ```
 
 **Step-by-Step**:
-1. `nodetool status`로 DOWN/UNBALANCED 노드 식별
-2. `nodetool tpstats`로 Blocked Operations 확인
-3. `nodetool gcstats`로 GC 휴지 시간 측정
-4. 이상 징후 노드를 우선 순위로 진단
+1. Identify DOWN/UNBALANCED nodes with `nodetool status`
+2. Check Blocked Operations via `nodetool tpstats`
+3. Measure GC pause times with `nodetool gcstats`
+4. Prioritize diagnosis of anomalous nodes
 
-### 2. 로그 분석 (Reading Cassandra Logs)
+### 2. Reading Cassandra Logs
 
 ```bash
-# 주요 로그 파일 위치
-/var/log/cassandra/system.log      # 시스템 이벤트
-/var/log/cassandra/debug.log       # 디버그 정보
-/var/log/cassandra/gc.log          # GC 로그
-/var/log/cassandra/audit.log       # 보안 감사 로그
+# Main log file locations
+/var/log/cassandra/system.log      # System events
+/var/log/cassandra/debug.log       # Debug information
+/var/log/cassandra/gc.log          # GC logs
+/var/log/cassandra/audit.log       # Security audit logs
 
-# ERROR 레벨 필터링
+# Filter ERROR level
 grep "ERROR" /var/log/cassandra/system.log | tail -100
 
-# 특정 패턴 검색 (예: Timeout)
+# Search for specific patterns (e.g., Timeout)
 grep "TimeoutException" /var/log/cassandra/system.log
 
-# GC 문제 분석
+# Analyze GC issues
 grep "GC pause" /var/log/cassandra/gc.log
 
-# 실시간 로그 모니터링
+# Real-time log monitoring
 tail -f /var/log/cassandra/system.log
 ```
 
-**주요 오류 패턴**:
+**Common Error Patterns**:
 
-| 패턴 | 원인 | 해결 방안 |
-|------|------|-----------|
-| `TimeoutException` | 네트워크/디스크 지연 | 노드 상태, 디스크 I/O 확인 |
-| `OutOfMemoryError` | Heap 메모리 부족 | Heap 크기 조정, 메모리 누수 진단 |
-| `CompactionException` | 컴팩션 실패 | 디스크 공간, 컴팩션 설정 확인 |
-| `BootstrapException` | 노드 합류 실패 | 네트워크, 토큰 범위 확인 |
-| `CorruptionException` | 데이터 손상 | SSTable 무결성 검사 |
+| Pattern | Cause | Resolution |
+|---------|-------|------------|
+| `TimeoutException` | Network/disk latency | Check node status, disk I/O |
+| `OutOfMemoryError` | Insufficient Heap memory | Adjust Heap size, diagnose memory leaks |
+| `CompactionException` | Compaction failure | Check disk space, compaction settings |
+| `BootstrapException` | Node join failure | Check network, token ranges |
+| `CorruptionException` | Data corruption | Verify SSTable integrity |
 
 **Step-by-Step**:
-1. `system.log`에서 ERROR/WARN 레벨 필터링
-2. 타임스탬프로 문제 발생 시간대 식별
-3. 관련 패턴(Timeout, OOM 등) 검색
-4. GC 로그로 메모리 문제 교차 검증
+1. Filter ERROR/WARN levels in `system.log`
+2. Identify problem timeframes by timestamp
+3. Search for related patterns (Timeout, OOM, etc.)
+4. Cross-validate memory issues with GC logs
 
-### 3. nodetool 활용 디버깅
+### 3. Debugging with nodetool
 
 ```bash
-# 스레드 풀 상태 심층 분석
+# In-depth thread pool analysis
 nodetool tpstats
-# Waiting on freeable slot: 대기 중인 작업 수
-# Blocked operations: 차단된 작업 수 (0이어야 함)
+# Waiting on freeable slot: number of queued operations
+# Blocked operations: number of blocked operations (should be 0)
 
-# 테이블별 상세 메트릭
+# Detailed per-table metrics
 nodetool tablestats my_keyspace my_table
-# Read latency, Write latency, Row cache hit rate 확인
+# Check Read latency, Write latency, Row cache hit rate
 
-# 컴팩션 상태 분석
+# Compaction status analysis
 nodetool compactionstats
-# Active compactions, Estimated progress 확인
+# Check Active compactions, Estimated progress
 
-# 힌트 상태 확인
+# Check hint status
 nodetool showhints
-# 미처리 힌트 수 확인
+# Verify unprocessed hints count
 
-# 캐시 통계
+# Cache statistics
 nodetool cachestats
-# Key cache, Row cache hit rate 확인
+# Check Key cache, Row cache hit rate
 
-# 디스크 사용량
+# Disk usage
 nodetool info
-# Disk usage, Space available 확인
+# Check Disk usage, Space available
 ```
 
 **Step-by-Step**:
-1. `tpstats`로 스레드 풀 상태 확인 (Blocked = 0이어야 함)
-2. `tablestats`로 테이블별 레이턴시 분석
-3. `compactionstats`로 컴팩션 부하 추적
-4. `info`로 디스크 공간 확인
+1. Check thread pool status via `tpstats` (Blocked should = 0)
+2. Analyze per-table latency with `tablestats`
+3. Track compaction load with `compactionstats`
+4. Verify disk space with `info`
 
-### 4. 외부 도구 활용한 심층 분석
+### 4. In-Depth Analysis Using External Tools
 
 ```bash
-# JVM 힙 덤프 (OutOfMemoryError 시)
+# JVM heap dump (on OutOfMemoryError)
 jmap -dump:format=b,file=heap.hprof <pid>
 
-# 스레드 덤프 (Hang 상태 시)
+# Thread dump (on Hang state)
 jstack <pid> > thread_dump.txt
 
-# 네트워크 연결 확인
+# Check network connections
 netstat -an | grep 9042
 ss -tlnp | grep 7000
 
-# 디스크 I/O 모니터링
+# Monitor disk I/O
 iostat -x 1
 iotop
 
-# 메모리 사용량 분석
+# Analyze memory usage
 free -m
 vmstat 1
 
-# 프로세스 상태 확인
+# Check process status
 ps aux | grep cassandra
 ```
 
-**JVM 힙 덤프 분석**:
+**JVM Heap Dump Analysis**:
 ```bash
-# MAT (Memory Analyzer Tool) 또는 jhat 사용
+# Use MAT (Memory Analyzer Tool) or jhat
 jhat heap.hprof
-# http://localhost:7000에서 브라우저로 접근
+# Access via browser at http://localhost:7000
 ```
 
-**스레드 덤프 분석**:
+**Thread Dump Analysis**:
 ```bash
-# 차단된 스레드 식별
+# Identify blocked threads
 grep "BLOCKED" thread_dump.txt
-# 데드락 패턴 확인
+# Check for deadlock patterns
 grep "waiting to lock" thread_dump.txt
 ```
 
 **Step-by-Step**:
-1. `jstack`로 스레드 상태 덤프
-2. `jmap`으로 힙 메모리 덤프 (OOM 시)
-3. 외부 도구(MAT, jhat)로 분석
-4. 차단 패턴/메모리 누수 식별
+1. Dump thread status with `jstack`
+2. Dump heap memory with `jmap` (on OOM)
+3. Analyze with external tools (MAT, jhat)
+4. Identify blocking patterns/memory leaks
 
-### 5. 일반적인 문제 시나리오 및 해결
+### 5. Common Problem Scenarios and Solutions
 
-**시나리오 1: 쓰기 레이턴시 급증**
+**Scenario 1: Write Latency Spike**
 ```bash
-# 진단
-nodetool tpstats          # Blocked operations 확인
-nodetool compactionstats  # 컴팩션 부하 확인
-iostat -x 1               # 디스크 I/O 병목 확인
+# Diagnosis
+nodetool tpstats          # Check Blocked operations
+nodetool compactionstats  # Check compaction load
+iostat -x 1               # Check disk I/O bottleneck
 
-# 해결
-nodetool setcompactionthroughput 32  # 컴팩션 스로틀 증가
+# Resolution
+nodetool setcompactionthroughput 32  # Increase compaction throttle
 ```
 
-**시나리오 2: 읽기 레이턴시 급증**
+**Scenario 2: Read Latency Spike**
 ```bash
-# 진단
-nodetool tablestats keyspace table  # Read latency 확인
-nodetool cachestats                  # Cache hit rate 확인
-nodetool tpstats                     # Read thread 대기 확인
+# Diagnosis
+nodetool tablestats keyspace table  # Check Read latency
+nodetool cachestats                  # Check Cache hit rate
+nodetool tpstats                     # Check Read thread wait
 
-# 해결
-# 캐시 효율성 개선, 인덱스 최적화 검토
+# Resolution
+# Improve cache efficiency, review index optimization
 ```
 
-**시나리오 3: 노드 다운**
+**Scenario 3: Node Down**
 ```bash
-# 진단
-nodetool status              # DOWN 노드 식별
-grep "ERROR" system.log      # 종료 원인 확인
-dmesg | tail                 # 커널 메시지 확인 (OOM Killer 등)
+# Diagnosis
+nodetool status              # Identify DOWN node
+grep "ERROR" system.log      # Check termination cause
+dmesg | tail                 # Check kernel messages (OOM Killer, etc.)
 
-# 해결
-# OOM: Heap 크기 증가 또는 메모리 누수 수정
-# 디스크 부족: 데이터 정리 또는 디스크 확장
+# Resolution
+# OOM: Increase Heap size or fix memory leak
+# Disk full: Clean data or expand disk
 ```
 
-**시나리오 4: 데이터 불일치**
+**Scenario 4: Data Inconsistency**
 ```bash
-# 진단
-nodetool repair -pr keyspace table  # 파티션별 리페어
-nodetool verify keyspace table       # 데이터 무결성 검사
+# Diagnosis
+nodetool repair -pr keyspace table  # Per-partition repair
+nodetool verify keyspace table       # Data integrity check
 
-# 해결
-# 정기적 리페어 스케줄링
-# auto_snapshot 활성화 확인
+# Resolution
+# Schedule regular repairs
+# Verify auto_snapshot is enabled
 ```
 
 ---
 
 ## Tool Integration
 
-| 도구 | 사용 목적 | 예시 |
-|------|-----------|------|
-| `run_command` | nodetool, jstack, jmap 등 실행 | `nodetool tpstats`, `jstack <pid>` |
-| `search_files` | 로그 파일에서 오류 패턴 검색 | `grep "ERROR" system.log` |
-| `read_file` | 로그/설정 파일 분석 | system.log, cassandra.yaml 확인 |
-| `edit_file` | 설정 변경으로 문제 해결 | compaction_throughput 조정 |
+| Tool | Purpose | Example |
+|------|---------|---------|
+| `run_command` | Execute nodetool, jstack, jmap | `nodetool tpstats`, `jstack <pid>` |
+| `search_files` | Search error patterns in log files | `grep "ERROR" system.log` |
+| `read_file` | Analyze logs/configuration files | Check system.log, cassandra.yaml |
+| `edit_file` | Resolve issues via configuration changes | Adjust compaction_throughput |
 
 ---
 
 ## Anti-Patterns & Guardrails
 
-❌ **로그 없이 추측 진단** — 데이터 기반 접근 필수  
-❌ **프로덕션에서 DEBUG 로깅 활성화** — 디스크 고갈, 성능 저하  
-❌ **jmap 힙 덤프 빈번 실행** — 서비스 중단 시간 증가  
-❌ **리페어 없이 데이터 불일치 방치** — 데이터 손실 누적  
-❌ **Blocked Operations 무시** — 문제 악화, 서비스 중단  
+❌ **Diagnosing without logs** — Data-driven approach is mandatory  
+❌ **Enabling DEBUG logging in production** — Disk exhaustion, performance degradation  
+❌ **Frequent execution of jmap heap dumps** — Increased service interruption time  
+❌ **Ignoring data inconsistencies without repair** — Accumulating data loss  
+❌ **Ignoring Blocked Operations** — Problem escalation, service interruption  
 
-⚠️ **GC 휴지 시간 500ms 초과** — 클라이언트 타임아웃 유발  
-⚠️ **디스크 사용률 85% 초과** — 쓰기 실패 위험  
-⚠️ **스레드 풀 고갈** — 모든 요청 대기, 서비스 불가  
+⚠️ **GC pause time exceeding 500ms** — Triggers client timeouts  
+⚠️ **Disk usage exceeding 85%** — Risk of write failures  
+⚠️ **Thread pool exhaustion** — All requests waiting, service unavailable  
 
 ---
 
 ## Best Practices
 
-1. **모니터링 상시 유지** — 메트릭 수집 및 알림 설정
-2. **로그 롤링 필수** — 디스크 고갈 방지
-3. **정기적 리페어** — 데이터 불일치 예방
-4. **GC 로그 모니터링** — 메모리 문제 조기 발견
-5. **tpstats 상시 확인** — Blocked Operations = 0 유지
-6. **디스크 공간 확보** — 15% 이상 여유 유지
-7. **문제 시나리오 문서화** — 대응 절차 표준화
+1. **Continuous monitoring** — Collect metrics and set alerts
+2. **Configure log rolling mandatory** — Prevent disk exhaustion
+3. **Regular repairs** — Prevent data inconsistencies
+4. **Monitor GC logs** — Early detection of memory issues
+5. **Always check tpstats** — Maintain Blocked Operations = 0
+6. **Ensure disk space** — Keep at least 15% free
+7. **Document problem scenarios** — Standardize response procedures
 
 ---
 
